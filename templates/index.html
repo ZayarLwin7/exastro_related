@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('page_title') }}</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
+  .logo svg{width:22px;height:22px}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut)}
+  .pill .dot{width:8px;height:8px;border-radius:50%}
+  .pill.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.2)}
+  .pill.mock .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(var(--warn-rgb),.2)}
+  .wrap{max-width:1420px;margin:0 auto;padding:34px 34px 80px}
+  .grid{display:grid;grid-template-columns:1.12fr 1fr;gap:26px;align-items:start}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 30px;backdrop-filter:blur(10px);position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;inset:0;border-radius:20px;padding:1px;background:linear-gradient(135deg,rgba(var(--acc-rgb),.4),transparent 40%,transparent 60%,rgba(var(--acc2-rgb),.35));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  .card h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
+  .card .lede{color:var(--mut);font-size:13px;line-height:1.5;margin-bottom:24px}
+  .field{margin-bottom:20px}
+  .field label{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:600;margin-bottom:8px}
+  .field label .hint{font-weight:500;font-size:11.5px;color:var(--mut)}
+  .input{width:100%;background:rgba(var(--field-rgb),.25);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--txt);font-family:inherit;transition:border-color .15s, box-shadow .15s, background .15s}
+  .input::placeholder{color:var(--dim)}
+  .input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 4px rgba(var(--acc-rgb),.18);background:rgba(var(--field-rgb),.35)}
+  textarea.input{min-height:190px;font-family:var(--mono);font-size:13px;line-height:1.6;resize:vertical}
+  select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;cursor:pointer}
+
+  select.input:hover{border-color:var(--line-strong)}
+  select.input option:checked{background:rgba(var(--acc-rgb),.34);color:var(--on-acc)}  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.row2{grid-template-columns:1fr}}
+  .srcnote{font-size:11.5px;color:var(--dim);font-family:var(--mono);margin-top:7px;min-height:15px}
+  .composed{margin-top:8px;font-size:12px;color:var(--mut)}
+  .composed code{font-family:var(--mono);color:var(--acc2);font-weight:600}
+  .note{font-size:11.5px;color:var(--dim);margin-top:7px;line-height:1.45}
+  /* Language switch — top right; one language is rendered at a time. */
+  .gear{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
+    padding:6px 12px;border-radius:999px;background:var(--panel-2);
+    border:1px solid var(--line);color:var(--mut);text-decoration:none;max-width:260px}
+  .gear:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
+  .gear svg{width:13px;height:13px;flex:0 0 auto}
+  .gear .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .langsw{display:inline-flex;gap:2px;padding:3px;border-radius:10px;
+    background:var(--panel-2);border:1px solid var(--line)}
+  .lbtn{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:650;
+    color:var(--mut);text-decoration:none;transition:.15s;white-space:nowrap}
+  .lbtn:hover{color:var(--txt);background:rgba(var(--hi-rgb),.06)}
+  .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);
+    box-shadow:0 4px 14px rgba(var(--acc-rgb),.35)}
+  .hintline{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.5}
+  .check{display:flex;gap:10px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
+  .check input{margin-top:2px;accent-color:var(--acc);width:15px;height:15px;flex:0 0 auto}
+  .check .hint{display:block;color:var(--dim);font-size:11px}
+  .jsonbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+  .minibtn{background:var(--panel-2);border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;transition:color .15s,border-color .15s}
+  .minibtn:hover{color:var(--txt);border-color:var(--acc)}
+  .jsonok{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:8px}
+  .jsonok.good{color:var(--ok);background:rgba(var(--ok-rgb),.09)}
+  .jsonok.bad{color:var(--err);background:rgba(var(--err-rgb),.1)}
+  .colpreview{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px;background:rgba(var(--field-rgb),.18)}
+  .colpreview .cap{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-bottom:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px}
+  .chip code{font-family:var(--mono);font-size:11.5px;color:var(--txt)}
+  .chip .t{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:99px}
+  .t.str{background:rgba(var(--info-rgb),.14);color:var(--info-text)}
+  .t.int{background:rgba(var(--warn-rgb),.14);color:var(--warn-text)}
+  .t.float{background:rgba(var(--float-rgb),.14);color:var(--float-text)}
+  .t.bool{background:rgba(var(--ok-rgb),.14);color:var(--ok-text)}
+  .t.other{background:rgba(var(--violet-rgb),.14);color:var(--violet-text)}
+  /* Per-column grid, generated from the JSON keys. Rows the operator touched
+     carry a faint accent so "what will actually be sent" is visible at a glance. */
+  .cgrid{width:100%;border-collapse:collapse;font-size:12.5px}
+  .cgrid th{font-size:10.5px;font-weight:600;text-transform:uppercase;
+            letter-spacing:.07em;color:var(--mut);text-align:left;padding:0 8px 8px 0}
+  .cgrid th.ty{width:78px}
+  .cgrid th.ck,.cgrid td.ck{width:52px;text-align:center;padding:0 0 6px}
+  .cgrid td{padding:5px 8px 5px 0;border-top:1px solid var(--line);vertical-align:middle}
+  .cgrid td code{font-family:var(--mono);font-size:11.5px;color:var(--txt);
+                 word-break:break-all}
+  .cgrid tr.set td{background:rgba(var(--acc-rgb),.07)}
+  .cgrid input.dn{padding:6px 9px;font-size:12.5px;font-family:var(--sans)}
+  .cgrid input[type=checkbox]{width:15px;height:15px;accent-color:var(--acc);
+                              cursor:pointer;margin:0}
+  .cgrid td .blank{color:var(--dim);font-size:11.5px}
+  .btn{width:100%;margin-top:8px;padding:14px;border:0;border-radius:13px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 10px 30px rgba(var(--acc-rgb),.4);transition:transform .1s, box-shadow .2s, filter .2s}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 14px 34px rgba(var(--acc-rgb),.5);filter:brightness(1.05)}
+  .btn:active{transform:translateY(0)}
+  .banner{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:12px 16px;border-radius:12px;font-size:13px;font-weight:500}
+  .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.25);color:var(--err-text)}
+  .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.25);color:var(--ok-text)}
+  .banner{transition:opacity .55s ease,transform .55s ease}
+  .banner.bye{opacity:0;transform:translateY(-8px)}
+  .listcard .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .listcard .head h2{font-size:15px}
+  .count{font-size:12px;color:var(--mut);font-weight:600}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{text-align:left;color:var(--mut);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .tbl td{padding:12px 10px;border-bottom:1px solid var(--line);color:var(--txt)}
+  /* Status and When are sized for their own content: a Japanese status pill
+     ("作成完了") and a full 'YYYY-MM-DD HH:MM:SS' timestamp both wrap badly in
+     a column sized for 'OK'. */
+  .listcard .tbl{table-layout:auto;min-width:520px}
+  .listcard .tbl th:nth-child(2),.listcard .tbl td:nth-child(2){width:20%;min-width:116px}
+  .listcard .tbl th:nth-child(3),.listcard .tbl td:nth-child(3){width:27%;min-width:168px}
+  .listcard .tbl th:nth-child(4),.listcard .tbl td:nth-child(4){width:1%;min-width:78px}
+  .listcard .status{white-space:nowrap}
+  .listcard .ts{white-space:nowrap;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .detailbtn{white-space:nowrap}
+  /* If the column still cannot fit, scroll it into view rather than let
+     overflow:hidden on the card swallow the Detail button. */
+  .tblwrap{overflow-x:auto;margin:0 -6px;padding:0 6px}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl td .name{font-weight:600}
+  .tbl td .dim{color:var(--mut);font-weight:400}
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:4px 10px;border-radius:999px}
+  .status.OK{color:var(--ok);background:rgba(var(--ok-rgb),.12)}
+  .status.PARTIAL{color:var(--warn);background:rgba(var(--warn-rgb),.12)}
+  .status.FAILED{color:var(--err);background:rgba(var(--err-rgb),.12)}
+  .empty{color:var(--mut);font-size:13.5px;text-align:center;padding:26px 0}
+  .empty .big{font-size:32px;margin-bottom:8px;opacity:.6}
+  @keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .grid>*{animation:fadeup .4s ease both}
+  .grid>*:nth-child(2){animation-delay:.08s}
+  .detailbtn{display:inline-block;padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:650;
+    color:var(--acc-text);background:rgba(var(--acc-rgb),.14);border:1px solid rgba(var(--acc-rgb),.26);
+    text-decoration:none;transition:.16s;white-space:nowrap}
+  .detailbtn:hover{background:rgba(var(--acc-rgb),.26);border-color:rgba(var(--acc-rgb),.45)}
+  /* History pager */
+  .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  .pager .range{font-size:11.5px;color:var(--dim);font-family:var(--mono)}
+  .pager .pages{display:flex;align-items:center;gap:5px}
+  .pgnum,.pgbtn{min-width:29px;height:29px;padding:0 8px;border-radius:8px;display:inline-flex;
+    align-items:center;justify-content:center;font-size:12px;font-weight:650;color:var(--mut);
+    background:var(--panel-2);border:1px solid var(--line);text-decoration:none;transition:.15s}
+  .pgnum:hover,.pgbtn:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.2)}
+  .pgnum.cur{background:rgba(var(--acc-rgb),.2);color:var(--acc-text);border-color:rgba(var(--acc-rgb),.42)}
+  .pgbtn.off{opacity:.35;pointer-events:none}
+  .gap{color:var(--dim);font-size:12px;padding:0 2px}
+  /* Submission overlay. A run takes ~10-30s because Exastro collects the role's
+     variables asynchronously, so without it the page just looks frozen and a
+     second click fires a second creation over the top of the first. */
+  #busy{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;
+    flex-direction:column;gap:18px;background:rgba(var(--scrim-rgb),.88);backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);text-align:center;padding:24px}
+  #busy.on{display:flex}
+  #busy .ring{width:54px;height:54px;border-radius:50%;border:3px solid rgba(var(--acc-rgb),.22);
+    border-top-color:var(--acc);animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #busy .bt{font-size:16px;font-weight:750;letter-spacing:-.01em}
+  #busy .bs{font-size:13px;color:var(--mut);line-height:1.6;max-width:400px}
+  #busy .clock{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  #busy[busy-fail="1"] .ring{animation:none;border-top-color:var(--err);border-color:rgba(var(--err-rgb),.3)}
+  #busy .retry{display:none;margin-top:6px}
+  #busy[busy-fail="1"] .retry{display:inline-flex}
+  #busy .retry button{padding:9px 18px;border-radius:10px;font-size:13px;font-weight:650;cursor:pointer;
+    background:rgba(var(--acc-rgb),.18);color:var(--acc-text);border:1px solid rgba(var(--acc-rgb),.32)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
+
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+  </div>
+  <div>
+    <h1>{{ t('app_name') }}</h1>
+    <div class="subtitle">{{ t('app_subtitle') }}</div>
+  </div>
+  <div class="spacer"></div>
+  {% if cfg.mock %}
+  <span class="pill mock"><span class="dot"></span>{{ t('pill_mock') }}</span>
+  {% else %}
+  <span class="pill live"><span class="dot"></span>{{ t('pill_live') }} · {{ cfg.workspace }}</span>
+  {% endif %}
+  <a class="gear" href="/settings" rel="nofollow" title="{{ t('settings_title') }} · {{ t('writes_to') }}: {{ cfg.gateway }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span class="who">{{ profile_name or t('gear') }}</span>
+  </a>
+  <nav class="themesw" aria-label="{{ t('theme_switch') }}">
+    {% for th in themes %}
+      {% if th.active %}
+      <span class="lbtn cur" aria-current="true" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</span>
+      {% else %}
+      <a class="lbtn" href="/theme/{{ th.code }}" rel="nofollow" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  <nav class="langsw" aria-label="{{ t('language_switch') }}">
+    {% for l in languages %}
+      {% if l.active %}
+      <span class="lbtn cur" aria-current="true" title="{{ t('language_switch') }}">{{ l.name }}</span>
+      {% else %}
+      <a class="lbtn" href="/lang/{{ l.code }}" rel="nofollow" title="{{ t('language_switch') }}">{{ l.name }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <h2>{{ t('new_movement') }}</h2>
+      <p class="lede">{{ t('lede') }}</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="banner {{ 'err' if category=='error' else 'ok' }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form action="/create" method="post">
+        <div class="field">
+          <label>{{ t('movement_name') }}</label>
+          <input class="input" type="text" name="movement_name" id="movement_name" value="{{ movement_name or '' }}" placeholder="{{ t('movement_ph') }}" autocomplete="off" required>
+        </div>
+
+        <div class="field">
+          <label>{{ t('param_rest_name') }}</label>
+          <input class="input" type="text" name="sheet_name" id="sheet_name" value="{{ sheet_name or '' }}" placeholder="{{ t('optional') }}" autocomplete="off">
+          <div class="hintline">{{ t('sheet_hint') }}</div>
+        </div>
+
+        <div class="field">
+          <label>{{ t('role_package') }} <span class="hint">{{ t('role_package_hint') }}</span></label>
+          <div class="row2">
+            {% set chosen_pkg = (role_name or '').split(':')[0] %}
+            {% set chosen_role = (role_name or '').split(':')[1:] | join(':') %}
+            <select class="input" name="role_package" id="role_package"
+                    data-preset="{{ role_name or '' }}" required>
+              <option value="">{{ t('choose_package') }}</option>
+              {% if catalogue %}
+                <optgroup label="{{ t('group_git') }}">
+                {% for p in catalogue.packages if p.source == 'git' %}
+                  <option value="{{ p.package }}" data-path="{{ p.file_path }}"
+                          {{ 'selected' if chosen_pkg == p.package }}>
+                    {{ p.package }} ({{ p.roles|length }} {{ t('roles_1' if p.roles|length == 1 else 'roles_n') }})
+                  </option>
+                {% endfor %}
+                </optgroup>
+                {% set uploads = catalogue.packages | selectattr('source','equalto','upload') | list %}
+                {% if uploads %}
+                <optgroup label="{{ t('group_upload') }}">
+                  {% for p in uploads %}
+                    <option value="{{ p.package }}" data-path=""
+                            {{ 'selected' if chosen_pkg == p.package }}>
+                      {{ p.package }} ({{ p.roles|length }} {{ t('roles_1' if p.roles|length == 1 else 'roles_n') }})
+                    </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+              {% else %}
+                <option value="" disabled>{{ t('catalogue_unavailable') }}</option>
+              {% endif %}
+            </select>
+            <select class="input" name="role_select" id="role_select" required>
+              <option value="">{{ t('choose_role') }}</option>
+            </select>
+          </div>
+          <div class="srcnote" id="srcnote"></div>
+          <div class="composed">movement_role_link → <code id="composed">—</code></div>
+        </div>
+
+        <div class="field">
+          <label>{{ t('exec_env') }} <span class="hint">{{ t('exec_env_hint') }}</span></label>
+          <select class="input" name="exec_env" id="exec_env">
+            {% set chosen_env = request.form.get('exec_env') if request.form else cfg.exec_env %}
+            {% if catalogue %}
+              {% for e in catalogue.environments %}
+                <option value="{{ e }}" {{ 'selected' if e == chosen_env }}>{{ e }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="{{ cfg.exec_env }}">{{ cfg.exec_env or '— unavailable —' }}</option>
+            {% endif %}
+          </select>
+          <div class="note">{{ t('exec_env_note') }}</div>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" name="wait_vars" id="wait_vars" checked>
+          <span>{{ t('wait_label') }}
+            <span class="hint">({{ t('wait_max', s=cfg.var_timeout) }})</span></span>
+        </label>
+
+
+        <div class="field">
+          <div class="jsonbar">
+            <label style="margin:0">{{ t('parameters') }}</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span id="jsonstatus" class="jsonok good">{{ t('json_ready') }}</span>
+              <button type="button" class="minibtn" id="fmt">{{ t('format') }}</button>
+            </div>
+          </div>
+          <textarea class="input" name="parameters" id="parameters" placeholder='{
+  "p_jobname": "JOB0000",
+  "p_reply_flag": "True",
+  "p_host": "[H]localhost"
+}' required>{{ parameters or '' }}</textarea>
+          <div class="note"><strong>{{ t('keys_note_head') }}</strong> {{ t('keys_note_body') }}</div>
+          <div class="colpreview" id="colpreview" style="display:none">
+            <div class="cap">{{ t('col_grid_title') }}</div>
+            <table class="cgrid"><thead><tr>
+              <th>{{ t('col_logical') }}</th>
+              <th class="ty">{{ t('col_type') }}</th>
+              <th>{{ t('col_display') }}</th>
+              <th class="ck" title="{{ t('col_required') }}">{{ t('col_required') }}</th>
+              <th class="ck" title="{{ t('col_unique') }}">{{ t('col_unique') }}</th>
+            </tr></thead><tbody id="colrows"></tbody></table>
+            <div class="note" id="sheetstate" style="display:none;margin-top:10px"></div>
+            <div class="note" style="margin-top:6px">{{ t('col_grid_hint') }}</div>
+            {# Opt-in, because the cost is real: ITA cannot change Required/Unique
+               on an existing column, and the only way to apply them is to delete
+               the column and re-add it -- a new record, whose previously entered
+               input values do not carry over. Off unless the operator asks. #}
+            <label class="check" style="margin:12px 0 0">
+              <input type="checkbox" name="replace_flags" value="1"
+                     {% if replace_flags %}checked{% endif %}>
+              <span>{{ t('replace_flags_label') }}
+                <span class="hint">{{ t('replace_flags_hint') }}</span></span>
+            </label>
+          </div>
+          {# Built by the page from the rows above, so the two can never hold a
+             different number of columns; the server still re-validates it. #}
+          <input type="hidden" name="column_meta" id="column_meta"
+                 value="{{ column_meta or '' }}">
+        </div>
+
+        <button class="btn" type="submit">
+          {{ t('create_btn') }}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-left:7px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+    </div>
+
+    <div class="card listcard">
+      {% set pager = creations %}
+      {% set STATUS_TEXT = {'OK': t('st_created'), 'PARTIAL': t('st_partial'),
+                            'FAILED': t('st_failed')} %}
+      <div class="head">
+        <h2>{{ t('history_title') }}</h2>
+        <span class="count" title="{{ t('runs_kept', n=pager.per_page) }}">
+          {{ t('runs_1' if pager.total == 1 else 'runs_n', n=pager.total) }}</span>
+      </div>
+      {% if pager.rows %}
+      <div class="tblwrap">
+      <table class="tbl">
+        <thead><tr><th>{{ t('th_movement') }}</th><th>{{ t('th_status') }}</th><th>{{ t('th_when') }}</th><th></th></tr></thead>
+        <tbody>
+          {% for c in pager.rows %}
+            <tr>
+              <td><span class="name">{{ c['movement_name'] }}</span><div class="dim" style="font-size:11px">{{ c['sheet_name'] }}</div></td>
+              <td><span class="status {{ c['status'] }}">{{ STATUS_TEXT.get(c['status'], c['status']) }}</span></td>
+              <td><span class="ts">{{ c['created_at'] | when }}</span></td>
+              <td style="text-align:right">
+                <a class="detailbtn" href="/creation/{{ c['id'] }}"
+                   title="{{ t('tip_full') if c['report_json'] else t('tip_status_only') }}">{{ t('detail') }}</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% if pager.pages > 1 %}
+      <nav class="pager" aria-label="History pages">
+        <span class="range">{{ t('range', start=pager.start, end=pager.end, total=pager.total) }}</span>
+        <div class="pages">
+          {% if pager.has_prev %}
+          <a class="pgbtn" href="/?page={{ pager.page - 1 }}" rel="prev">‹</a>
+          {% else %}<span class="pgbtn off">‹</span>{% endif %}
+          {% if 1 not in pager.window %}
+          <a class="pgnum" href="/?page=1">1</a><span class="gap">…</span>
+          {% endif %}
+          {% for n in pager.window %}
+            {% if n == pager.page %}
+            <span class="pgnum cur" aria-current="page">{{ n }}</span>
+            {% else %}
+            <a class="pgnum" href="/?page={{ n }}">{{ n }}</a>
+            {% endif %}
+          {% endfor %}
+          {% if pager.pages not in pager.window %}
+          <span class="gap">…</span><a class="pgnum" href="/?page={{ pager.pages }}">{{ pager.pages }}</a>
+          {% endif %}
+          {% if pager.has_next %}
+          <a class="pgbtn" href="/?page={{ pager.page + 1 }}" rel="next">›</a>
+          {% else %}<span class="pgbtn off">›</span>{% endif %}
+        </div>
+      </nav>
+      {% endif %}
+      {% else %}
+      <div class="empty"><div class="big">✦</div>{{ t('nothing_yet') }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Submission overlay. It must exist in the DOM *before* the script below that
+     binds it: an inline <script> runs the moment it is parsed, so an element
+     declared after it is still null at that point and the guard silently did
+     nothing. -->
+<div id="busy" role="dialog" aria-modal="true" aria-live="assertive" busy-fail="0">
+  <div class="ring"></div>
+  <div class="bt">{{ t('overlay_title') }}</div>
+  <div class="bs" id="busy-sub">{{ t('overlay_sub') }}</div>
+  <div class="clock" id="busy-clock">{{ t('elapsed', s=0) }}</div>
+  <div class="retry"><button type="button" id="busy-retry">{{ t('unlock') }}</button></div>
+</div>
+
+<script>
+/* Server-side translations handed to the client. The page renders in ONE
+   language, so the same switch that drives the templates feeds these too. */
+const T = {{ {
+  'choose_role': t('choose_role'), 'no_roles': t('no_roles'),
+  'no_roles_warn': t('no_roles_warn'),
+  'json_invalid': t('json_invalid'), 'json_empty': t('json_empty'),
+  'json_needs_object': t('json_needs_object'),
+  'cols_1': t('cols_1'), 'cols_n': t('cols_n'),
+  'submitting': t('submitting'), 'elapsed': t('elapsed'),
+  'still_working': t('still_working', s=cfg.var_timeout),
+  'unlock_confirm': t('unlock_confirm'),
+  'grid_seeded': t('grid_seeded'), 'grid_new': t('grid_new'),
+  'grid_unreadable': t('grid_unreadable'),
+} | tojson }};
+</script>
+<script>
+/* Role Package -> Role dependent dropdowns — the only way to pick a role.
+   Packages come from Exastro's file_link menu (the Git connections feeding the
+   Role Package List); roles are the values ITA itself will accept on
+   movement_role_link, so the composed "Package:Role" always validates. */
+(function(){
+  const CATALOG = {{ (catalogue or {'packages': [], 'environments': []}) | tojson }};
+  const pkgSel = document.getElementById('role_package');
+  const roleSel = document.getElementById('role_select');
+  const composed = document.getElementById('composed');
+  const srcnote = document.getElementById('srcnote');
+  const byPackage = {};
+  (CATALOG.packages || []).forEach(p => { byPackage[p.package] = p; });
+
+  function fillRoles(keep){
+    const pkg = pkgSel.value;
+    const meta = byPackage[pkg];
+    roleSel.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = meta && meta.roles.length ? T.choose_role : T.no_roles;
+    roleSel.appendChild(blank);
+    ((meta && meta.roles) || []).forEach(r => {
+      const o = document.createElement('option');
+      o.value = r; o.textContent = r;
+      roleSel.appendChild(o);
+    });
+    if (keep && meta && meta.roles.includes(keep)) roleSel.value = keep;
+    srcnote.textContent = meta && meta.file_path ? ('git: ' + meta.file_path) : '';
+    if (meta && meta.source === 'git' && !meta.roles.length) {
+      srcnote.textContent += '  ' + T.no_roles_warn;
+    }
+    render();
+  }
+
+  function render(){
+    const value = (pkgSel.value && roleSel.value) ? pkgSel.value + ':' + roleSel.value : '';
+    composed.textContent = value || '—';
+  }
+
+  pkgSel.addEventListener('change', () => fillRoles());
+  roleSel.addEventListener('change', render);
+
+  // A run's Detail page links back here with a stored "Package:Role"; reselect
+  // it so the dropdowns — not a typed value — carry the prefill.
+  const preset = (pkgSel.dataset.preset || '').trim();
+  const idx = preset.indexOf(':');
+  const presetPkg = idx > 0 ? preset.slice(0, idx) : '';
+  const presetRole = idx > 0 ? preset.slice(idx + 1) : '';
+  if (byPackage[presetPkg]) {
+    pkgSel.value = presetPkg;
+    fillRoles(presetRole);
+  } else {
+    fillRoles();
+  }
+})();
+</script>
+<script>
+(function(){
+  const params=document.getElementById('parameters');
+  const status=document.getElementById('jsonstatus');
+  const prev=document.getElementById('colpreview');
+  const rows=document.getElementById('colrows');
+  const metaField=document.getElementById('column_meta');
+  const form=document.querySelector('form[action="/create"]');
+
+  /* The grid's model, in three parts, because a blank box has to mean one thing:
+       base   -- what the sheet holds right now, read from ITA
+       edits  -- what the operator typed or ticked, whatever the sheet says
+       diff   -- what actually gets sent: the difference between the two
+     Unseeded, an empty box is the untouched default and changes nothing, so a
+     re-run never overwrites a label someone polished in the ITA UI. Seeded from
+     the live sheet, an empty box against a known label is a deliberate "use the
+     logical name" -- the one thing the old grid could not express at all. */
+  let base={}, baseSheet='', edits={};
+  try{
+    const draft=JSON.parse(metaField.value||'{}');
+    if(draft && typeof draft==='object' && !Array.isArray(draft)){
+      // A rejected run echoes its payload back; replay it as typed values so the
+      // grid shows what was asked for instead of an empty form.
+      Object.keys(draft).forEach(k=>{
+        const e=draft[k]||{}; edits[k]={};
+        if('name' in e) edits[k].name=String(e.name===null||e.name===undefined?'':e.name);
+        if('required' in e) edits[k].required=!!e.required;
+        if('unique' in e) edits[k].unique=!!e.unique;
+      });
+    }
+  }catch(e){ edits={}; }        // a tampered draft is simply discarded
+
+  const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                         .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const ed=k=>edits[k]||{};
+  const bs=k=>base[k]||{};
+  const shown=k=>{                        // what the text box displays
+    const e=ed(k);
+    if('name' in e) return e.name;
+    const n=bs(k).name;
+    return (n && n!==k) ? n : '';
+  };
+  const wantsReq=k=>('required' in ed(k))? ed(k).required : !!bs(k).required;
+  const wantsUnq=k=>('unique' in ed(k))? ed(k).unique : !!bs(k).unique;
+  const diff=k=>{                         // what ITA will be told of this row
+    const b=bs(k), out={};
+    const typed=shown(k).trim(), want=typed||k;
+    const was=(b.name===undefined? k : b.name)||k;
+    if(want!==was) out.name=typed;        // '' resolves to the logical name
+    const rq=wantsReq(k), uq=wantsUnq(k);
+    if(rq!==!!b.required) out.required=rq;
+    if(uq!==!!b.unique) out.unique=uq;
+    return out;
+  };
+  const touched=k=>Object.keys(diff(k)).length>0;
+  const sync=()=>{
+    const meta={};
+    Object.keys(edits).forEach(k=>{ const d=diff(k);
+                                    if(Object.keys(d).length) meta[k]=d; });
+    metaField.value=JSON.stringify(meta);
+  };
+
+  /* Read the sheet's current column state so the rows start from truth rather
+     than from a guess. Debounced, and an out-of-order answer is dropped, because
+     typing fast must not let a stale response win. Each failure mode gets its own
+     words: "new sheet" and "could not read it" lead to different expectations. */
+  const stateLine=document.getElementById('sheetstate');
+  let pending='', baseState='';
+  const say=(kind,name)=>{
+    if(!stateLine) return;
+    const msg = kind==='ok' ? T.grid_seeded.replace('@@', esc(name))
+              : kind==='absent' ? T.grid_new.replace('@@', esc(name))
+              : kind==='error' ? T.grid_unreadable.replace('@@', esc(name)) : '';
+    stateLine.innerHTML=msg;
+    stateLine.style.display = msg ? 'block' : 'none';
+  };
+  let seedTimer=null;
+  const queueSeed=()=>{ clearTimeout(seedTimer); seedTimer=setTimeout(seed,450); };
+  const seed=()=>{
+    const name=(sheet.value||'').trim();
+    // Only an answer that actually arrived counts as known: a sheet reported
+    // absent or unreadable is re-read the next time, so a typo'd name or a
+    // network blip does not stick for the rest of the page's life.
+    if(!name){ base={}; baseSheet=''; baseState=''; say(''); render(); return; }
+    if(name===baseSheet && baseState==='ok') return;
+    const token=name; pending=token;
+    fetch('/api/sheet/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>{
+      if(pending!==token) return;                  // a newer answer already landed
+      const st=(data && data.state)||'error';
+      baseSheet=token; baseState=st; base=(st==='ok')?(data.columns||{}):{};
+      say(st==='ok'?'ok':(st==='error'?'error':'absent'), token);
+      // the rows are rebuilt, so hand the caret back where it was
+      const f=document.activeElement;
+      const fk=f&&f.dataset?f.dataset.k:null;
+      const fc=f&&f.classList?(f.classList.contains('dn')?'dn':
+              f.classList.contains('rq')?'rq':f.classList.contains('uq')?'uq':''):'';
+      const caret=(f&&f.selectionStart!==undefined)?f.selectionStart:-1;
+      render();
+      if(fk&&fc){
+        const el=rows.querySelector('input.'+fc+'[data-k="'+fk.replace(/"/g,'\\"')+'"]');
+        if(el){ el.focus(); if(fc==='dn'&&caret>=0){ try{el.setSelectionRange(caret,caret);}catch(e){} } }
+      }
+    }).catch(()=>{
+      if(pending!==token) return;
+      base={}; baseSheet=token; baseState='error'; say('error', token); render();
+    });
+  };
+
+  // Parameter Rest Name follows the Movement Name until it is edited by hand,
+  // so the common case needs no typing. A genuinely blank field is still valid:
+  // app.py resolves it to the Movement Name server-side too.
+  const movement=document.getElementById('movement_name');
+  const sheet=document.getElementById('sheet_name');
+  /* The Rest Name follows the Movement Name, and assigning `.value` fires no
+     event at all -- so this was the path that never seeded: type a Movement and
+     the sheet name appears, but nothing asked ITA what it holds. A mirror has to
+     announce itself. */
+  movement.addEventListener('input',()=>{
+    if(sheet.dataset.touched) return;
+    sheet.value=movement.value;
+    queueSeed();
+  });
+  sheet.addEventListener('input',()=>{ sheet.dataset.touched='1'; queueSeed(); });
+  if (sheet.value) sheet.dataset.touched='1';
+
+  const typeOf=v=>{
+    if(typeof v==='string')return ['string','str'];
+    if(typeof v==='boolean')return ['boolean','bool'];
+    if(typeof v==='number'&&Number.isInteger(v))return ['integer','int'];
+    if(typeof v==='number')return ['decimal','float'];
+    return [Array.isArray(v)?'list':'object','other'];
+  };
+
+  function render(){
+    let obj;
+    try{ obj=JSON.parse(params.value); }
+    catch(e){
+      status.className='jsonok bad';
+      status.textContent=params.value.trim()?T.json_invalid:T.json_empty;
+      prev.style.display='none';
+      return;
+    }
+    if(obj===null||typeof obj!=='object'||Array.isArray(obj)){
+      status.className='jsonok bad'; status.textContent=T.json_needs_object;
+      prev.style.display='none'; return;
+    }
+    const keys=Object.keys(obj);
+    status.className='jsonok good';
+    status.textContent=keys.length+' '+T[(keys.length===1?'cols_1':'cols_n')];
+    // A key removed from the JSON must not stay configured for a column that is
+    // gone: the payload would carry an orphan entry the server has to reject.
+    Object.keys(edits).forEach(k=>{ if(keys.indexOf(k)<0) delete edits[k]; });
+    rows.innerHTML=keys.map(k=>{
+      const [label,cls]=typeOf(obj[k]);
+      return '<tr'+(touched(k)?' class="set"':'')+'>'
+        +'<td><code>'+esc(k)+'</code></td>'
+        +'<td><span class="t '+cls+'">'+label+'</span></td>'
+        +'<td><input class="input dn" type="text" data-k="'+esc(k)+'" value="'
+          +esc(shown(k))+'" placeholder="'+esc(k)+'" maxlength="128" autocomplete="off"></td>'
+        +'<td class="ck"><input type="checkbox" class="rq" data-k="'+esc(k)+'"'
+          +(wantsReq(k)?' checked':'')+'></td>'
+        +'<td class="ck"><input type="checkbox" class="uq" data-k="'+esc(k)+'"'
+          +(wantsUnq(k)?' checked':'')+'></td>'
+        +'</tr>';
+    }).join('');
+    sync();
+    prev.style.display='block';
+  }
+
+  /* Delegated, because render() replaces the rows whenever the JSON changes. */
+  rows.addEventListener('input', ev=>{
+    const el=ev.target, k=el.dataset.k;
+    if(!k) return;
+    const entry=edits[k]||(edits[k]={});
+    if(el.classList.contains('dn')) entry.name=el.value;
+    else if(el.classList.contains('rq')) entry.required=el.checked;
+    else if(el.classList.contains('uq')) entry.unique=el.checked;
+    else return;
+    sync();
+    const tr=el.closest('tr');
+    if(tr) tr.classList.toggle('set', touched(k));
+  });
+  form.addEventListener('submit', ()=>{ sync(); });
+
+  document.getElementById('fmt').addEventListener('click',()=>{
+    try{ params.value=JSON.stringify(JSON.parse(params.value),null,2); }
+    catch(e){ /* leave as-is if invalid */ }
+    render();
+  });
+  params.addEventListener('input',render);
+  sheet.addEventListener('change',seed);
+  render();
+  seed();           // the name may have arrived prefilled: by a re-run link, or
+                    // by the server echoing a form that failed validation
+})();
+
+/* One submission at a time.
+   The POST navigates away, so the overlay simply stays up until the result page
+   replaces this document. Three cases are handled:
+     - double click / Enter held down  -> guarded by `busy` plus a disabled button
+     - Back button restoring the page  -> bfcache re-shows a stale overlay, so
+       `pageshow` clears the guard
+     - the request never coming back   -> an unlock is offered, worded honestly:
+       the run may still be finishing inside Exastro */
+(function(){
+  const form = document.querySelector('form[action="/create"]');
+  const busy = document.getElementById('busy');
+  if(!form) return;
+  const btn = form.querySelector('button[type="submit"]');
+  const clock = document.getElementById('busy-clock');
+  const sub = document.getElementById('busy-sub');
+  const retry = document.getElementById('busy-retry');
+  const WAIT = {{ (cfg.var_timeout or 120) | int }};
+  let label = ''; if (btn) label = btn.innerHTML;
+  let started = 0, timer = null;
+  // The in-flight flag is owned by JS, never read back from the DOM: relying on
+  // `busy.classList` meant that if the overlay element was missing the guard was
+  // disabled along with it.
+  let running = false;
+
+  function tick(){
+    const s = Math.round((Date.now() - started) / 1000);
+    if (clock) clock.textContent = T.elapsed.replace('{s}', s);
+    if (sub && s > WAIT) sub.textContent = T.still_working;
+    if (busy && s > WAIT + 60) busy.setAttribute('busy-fail', '1');
+  }
+  function lock(){
+    running = true;
+    started = Date.now();
+    if (busy){ busy.setAttribute('busy-fail', '0'); busy.classList.add('on'); }
+    if (btn){ btn.disabled = true; btn.innerHTML = T.submitting; }
+    timer = setInterval(tick, 1000);
+    tick();
+  }
+  function unlock(){
+    running = false;
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (busy) busy.classList.remove('on');
+    if (btn){ btn.disabled = false; btn.innerHTML = label; }
+  }
+
+  form.addEventListener('submit', (e) => {
+    if (running) { e.preventDefault(); return; }   // second click / held Enter
+    lock();
+  }, true);
+
+  // The browser restored this page from cache: the run already finished.
+  window.addEventListener('pageshow', (e) => { if (e.persisted) unlock(); });
+
+  if (retry) retry.addEventListener('click', () => {
+    if (window.confirm(T.unlock_confirm)) unlock();
+  });
+})();
+</script>
+
+<script>
+  // Validation banners are transient. Seven seconds is long enough to read one,
+  // and after that an old error sitting above the form gets mistaken for the
+  // current state — especially the long Exastro messages, which wrap.
+  (function () {
+    var LIFE = 7000;
+    document.querySelectorAll('.banner').forEach(function (b, i) {
+      setTimeout(function () {
+        b.classList.add('bye');
+        setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 600);
+      }, LIFE + i * 400);          // staggered so several stay readable
+    });
+  })();
+</script>
+</body>
+</html>

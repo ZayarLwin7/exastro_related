@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('run') }} #{{ c.id }} · {{ t('run_history_sub') }}</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));
+    display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
+  .logo svg{width:22px;height:22px}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar .spacer{flex:1}
+  .wrap{max-width:1420px;margin:0 auto;padding:30px 34px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 28px;margin-bottom:20px}
+  h2{font-size:16px;font-weight:750;letter-spacing:-.01em;margin-bottom:6px}
+  h3.sec{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--dim);margin:26px 0 10px}
+  .lede{color:var(--mut);font-size:13px;margin-bottom:16px;line-height:1.5}
+  code{font-family:var(--mono);font-size:12px;background:rgba(var(--hi-rgb),.06);
+    padding:1px 6px;border-radius:5px;color:var(--acc-text)}
+  .head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .badge{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .badge svg{width:24px;height:24px}
+  .gear{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
+    padding:6px 12px;border-radius:999px;background:var(--panel-2);
+    border:1px solid var(--line);color:var(--mut);text-decoration:none;max-width:260px}
+  .gear:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
+  .gear svg{width:13px;height:13px;flex:0 0 auto}
+  .gear .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .langsw{display:inline-flex;gap:2px;padding:3px;border-radius:10px;
+    background:var(--panel-2);border:1px solid var(--line)}
+  .lbtn{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:650;
+    color:var(--mut);text-decoration:none;transition:.15s;white-space:nowrap}
+  .lbtn:hover{color:var(--txt);background:rgba(var(--hi-rgb),.06)}
+  .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);
+    box-shadow:0 4px 14px rgba(var(--acc-rgb),.35)}
+  .badge.ok{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
+  .badge.partial{background:rgba(var(--warn-rgb),.14);color:var(--warn)}
+  .badge.failed{background:rgba(var(--err-rgb),.14);color:var(--err)}
+  .ht{font-size:21px;font-weight:800;letter-spacing:-.02em}
+  .hs{color:var(--mut);font-size:13px;margin-top:3px}
+  .pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:10.5px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .pill.ok{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
+  .pill.PARTIAL{background:rgba(var(--warn-rgb),.14);color:var(--warn)}
+  .pill.FAILED{background:rgba(var(--err-rgb),.14);color:var(--err)}
+  .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:22px}
+  .kvc{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kvc .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin-bottom:5px}
+  .kvc .v{font-size:13.5px;font-weight:600;word-break:break-all}
+  .v.mono{font-family:var(--mono);font-size:12px;font-weight:500}
+  table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+  /* The binding table needs ~4 columns of room; a long mono 'movement:variable'
+     cannot wrap, so the last column used to be clipped away by the card's
+     overflow:hidden. One column per row, plus a scroll wrapper as a net. */
+  .tblwrap{overflow-x:auto;margin:0 -6px;padding:0 6px}
+  .bindtbl{min-width:660px}
+  .bindtbl th:nth-child(1),.bindtbl td:nth-child(1){width:22%;min-width:140px}
+  .bindtbl th:nth-child(2),.bindtbl td:nth-child(2){width:12%;min-width:84px}
+  .bindtbl th:nth-child(3),.bindtbl td:nth-child(3){width:38%;min-width:250px}
+  .bindtbl th:nth-child(4),.bindtbl td:nth-child(4){width:28%;min-width:150px}
+  .bindtbl .bstat{white-space:nowrap}
+  .bindtbl .bdet{white-space:normal;max-width:280px}
+
+  .tbl th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--dim);font-weight:700;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+  .tbl td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tbl tr:last-child td{border-bottom:none}
+  .code{font-family:var(--mono);font-size:12px}
+  .steprow{display:flex;gap:12px;align-items:flex-start}
+  .stepicon{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:1px}
+  .stepicon svg{width:13px;height:13px}
+  .stepicon.ok{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
+  .stepicon.fail{background:rgba(var(--err-rgb),.14);color:var(--err)}
+  .sl{font-size:13px;font-weight:600}
+  .sd{font-size:12px;color:var(--mut);margin-top:3px;line-height:1.5;word-break:break-word}
+  .bstat{display:inline-flex;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.03em}
+  .bstat.good{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
+  .bstat.bad{background:rgba(var(--err-rgb),.14);color:var(--err)}
+  .bdet{font-size:11.5px;color:var(--mut);margin-top:5px;line-height:1.5}
+  .typebox{display:inline-flex;padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:600;
+    background:rgba(var(--hi-rgb),.06);color:var(--mut);text-transform:capitalize}
+  .typebox.string,.typebox.integer,.typebox.decimal,.typebox.multi-string{
+    background:rgba(var(--acc-rgb),.12);color:var(--acc-text)}
+  .note{background:rgba(var(--warn-rgb),.08);border:1px solid rgba(var(--warn-rgb),.22);border-radius:12px;
+    padding:14px 16px;font-size:13px;color:var(--warn-text);line-height:1.55;margin-top:18px}
+  pre.json{font-family:var(--mono);font-size:12px;line-height:1.65;background:rgba(var(--field-rgb),.32);
+    border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;color:var(--acc-text);
+    white-space:pre-wrap;word-break:break-word}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:11px;
+    font-size:13px;font-weight:650;border:1px solid var(--line);background:var(--panel-2);
+    color:var(--txt);cursor:pointer;transition:.16s}
+  .btn:hover{background:rgba(var(--hi-rgb),.09);border-color:rgba(var(--hi-rgb),.18)}
+  .back{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap}
+  .rebtn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;
+    font-size:12.5px;font-weight:650;background:rgba(var(--acc-rgb),.16);color:var(--acc-text);
+    border:1px solid rgba(var(--acc-rgb),.3);text-decoration:none}
+  .rebtn:hover{background:rgba(var(--acc-rgb),.26)}
+
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+  </div>
+  <div>
+    <h1>{{ t('app_name') }}</h1>
+    <div class="subtitle">{{ t('run_history_sub') }}</div>
+  </div>
+  <div class="spacer"></div>
+  <a class="gear" href="/settings" rel="nofollow" title="{{ t('settings_title') }} · {{ t('writes_to') }}: {{ cfg.gateway }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span class="who">{{ profile_name or t('gear') }}</span>
+  </a>
+  <nav class="themesw" aria-label="{{ t('theme_switch') }}">
+    {% for th in themes %}
+      {% if th.active %}
+      <span class="lbtn cur" aria-current="true" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</span>
+      {% else %}
+      <a class="lbtn" href="/theme/{{ th.code }}" rel="nofollow" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  <nav class="langsw" aria-label="{{ t('language_switch') }}">
+    {% for l in languages %}
+      {% if l.active %}
+      <span class="lbtn cur" aria-current="true">{{ l.name }}</span>
+      {% else %}
+      <a class="lbtn" href="/lang/{{ l.code }}" rel="nofollow">{{ l.name }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  <a class="btn" href="/" style="text-decoration:none">{{ t('back') }}</a>
+</header>
+
+{% set snap = c.report %}
+{% set STATUS_TEXT = {
+  'OK': t('st_created'), 'PARTIAL': t('st_partial'), 'FAILED': t('st_failed'),
+  'linked': t('st_linked'), 'exists': t('st_exists'),
+  'missing_column': t('st_missing_column'),
+  'missing_variable': t('st_missing_variable'), 'failed': t('st_failed_short')
+} %}
+{% set rep = (snap.report if snap else None) or {'steps': [], 'bindings': [], 'linked': 0, 'total': 0} %}
+{% set ok = c.status == "OK" %}
+{% set partial = c.status == "PARTIAL" %}
+
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <div class="badge {{ 'ok' if ok else ('partial' if partial else 'failed') }}">
+        {% if ok %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        {% elif partial %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        {% else %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        {% endif %}
+      </div>
+      <div>
+        <div class="ht">{{ t('run') }} #{{ c.id }}
+          <span class="pill {{ c.status }}">{{ STATUS_TEXT.get(c.status, c.status) }}</span>
+        </div>
+        <div class="hs">{{ c.created_at | when }} · {{ c.movement_name }}
+          {% if rep %}· {{ t('bound', linked=rep.linked, total=rep.total) }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="kv">
+      <div class="kvc"><div class="k">{{ t('kv_movement') }}</div><div class="v mono">{{ c.movement_name }}</div></div>
+      <div class="kvc"><div class="k">{{ t('kv_role') }}</div><div class="v mono">{{ c.role_name }}</div></div>
+      <div class="kvc"><div class="k">{{ t('kv_sheet') }}</div><div class="v mono">{{ c.sheet_name }}</div></div>
+      {% if snap %}
+      <div class="kvc"><div class="k">{{ t('kv_exec_env') }}</div><div class="v mono">{{ snap.execution_env or t('none_val') }}</div></div>
+      <div class="kvc"><div class="k">{{ t('kv_waited') }}</div><div class="v">{{ t('yes') if snap.wait_vars else t('no') }}</div></div>
+      {% endif %}
+    </div>
+
+    {% if not snap %}
+    <div class="note">
+      {{ t('predates') }}
+    </div>
+    <div class="back">
+      <a class="rebtn" href="/?movement_name={{ c.movement_name|urlencode }}&role_name={{ c.role_name|urlencode }}&sheet_name={{ c.sheet_name|urlencode }}">{{ t('rerun') }}</a>
+    </div>
+    {% else %}
+
+    <h3 class="sec">{{ t('steps') }}</h3>
+    <table class="tbl"><tbody>
+      {% for s in rep.steps %}
+      <tr><td>
+        <div class="steprow">
+          <div class="stepicon {{ 'ok' if s.ok else 'fail' }}">
+            {% if s.ok %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            {% else %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            {% endif %}
+          </div>
+          <div>
+            <div class="sl">{{ tf(s.i18n, s.args) if s.i18n else s.label }}</div>
+            {% if s.detail and s.detail != "OK" %}<div class="sd">{{ s.detail }}</div>{% endif %}
+          </div>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </tbody></table>
+
+    {% if rep.bindings %}
+    <h3 class="sec">{{ t('binding_title') }}</h3>
+    <div class="tblwrap">
+    <table class="tbl bindtbl">
+      <thead><tr><th>{{ t('th_parameter') }}</th><th>{{ t('th_type') }}</th><th>{{ t('th_role_variable') }}</th><th>{{ t('th_result') }}</th></tr></thead>
+      <tbody>
+        {% for b in rep.bindings %}
+          {% set good = b.status in ('linked', 'exists') %}
+          <tr>
+            <td class="code">{{ b.key }}</td>
+            <td><span class="typebox {{ (snap.types or {}).get(b.key, 'string') }}">{{ (snap.types or {}).get(b.key, 'string') }}</span></td>
+            <td class="code">{{ b.variable }}</td>
+            <td>
+              <span class="bstat {{ 'good' if good else 'bad' }}">{{ STATUS_TEXT.get(b.status, b.status) }}</span>
+              {% if not good and b.detail %}<div class="bdet">{{ b.detail }}</div>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% set params_json = (snap.params or {}) | tojson %}
+    {% if snap.params %}
+    <h3 class="sec">{{ t('params_submitted') }}</h3>
+    <pre class="json">{{ snap.params | tojson(indent=2) }}</pre>
+    {% endif %}
+
+    <div class="back">
+      <a class="rebtn" href="/?movement_name={{ c.movement_name|urlencode }}&role_name={{ c.role_name|urlencode }}&sheet_name={{ c.sheet_name|urlencode }}{% if snap.params %}&parameters={{ params_json|urlencode }}{% endif %}">{{ t('rerun_params') }}</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

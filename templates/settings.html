@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('settings_title') }} · {{ t('page_title') }}</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
+  .logo svg{width:22px;height:22px}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut)}
+  .pill .dot{width:8px;height:8px;border-radius:50%}
+  .pill.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.2)}
+  .pill.mock .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(var(--warn-rgb),.2)}
+  .langsw{display:inline-flex;gap:4px;padding:4px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line)}
+  .lbtn{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;color:var(--mut);text-decoration:none}
+  .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc)}
+  .wrap{max-width:1100px;margin:0 auto;padding:30px 34px 90px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:26px 28px;backdrop-filter:blur(10px);margin-bottom:22px;overflow:hidden}
+  .card h2{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .card .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .card .head .spacer{flex:1}
+  p.lede{color:var(--mut);font-size:13px;line-height:1.6;margin-bottom:18px}
+  a.back{color:var(--mut);font-size:13px;text-decoration:none}
+  a.back:hover{color:var(--txt)}
+  .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:11px;padding:9px 15px;font:inherit;font-size:13px;font-weight:600;color:var(--txt);background:var(--panel-2);cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:rgba(var(--hi-rgb),.2)}
+  .btn.pri{border:0;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2))}
+  .btn.sm{padding:6px 11px;font-size:12px;border-radius:9px}
+  .btn.warnbtn{color:var(--err-text);border-color:rgba(var(--err-rgb),.3)}
+  .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.55;padding:12px 14px;border-radius:12px;margin-bottom:14px}
+  .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
+  .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  .banner{transition:opacity .55s ease,transform .55s ease}
+  .banner.bye{opacity:0;transform:translateY(-8px)}
+  .banner svg{flex:0 0 auto;margin-top:1px}
+  table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{text-align:left;color:var(--mut);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .tbl td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .tbl tr:last-child td{border-bottom:0}
+  .code{font-family:var(--mono);font-size:12px}
+  .dim{color:var(--dim)}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(var(--ok-rgb),.14);color:var(--ok-text);border:1px solid rgba(var(--ok-rgb),.3)}
+  .rowbtns{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+  .group{margin:22px 0 6px;padding-top:18px;border-top:1px solid var(--line)}
+  .group:first-of-type{border-top:0;padding-top:0}
+  .group h3{font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px}
+  @media(max-width:760px){.fields{grid-template-columns:1fr}}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld.wide{grid-column:1/-1}
+  .fld label{font-size:12px;font-weight:600;color:var(--mut)}
+  .fld .cfg{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .fld input[type=text],.fld input[type=password],.fld input[type=number],.fld input[type=url],.fld select{
+    padding:10px 12px;border-radius:10px;background:rgba(var(--field-rgb),.28);border:1px solid var(--line);color:var(--txt);font:inherit;font-size:13.5px;width:100%}
+  /* The native select renders with operating-system chrome: a white popup and a
+     default arrow that sit badly inside this theme, and a different height from
+     the inputs beside it. Same box, same metrics, drawn by us. */
+  .fld select{
+    appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    font-family:inherit;cursor:pointer;padding-right:34px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 11px center;
+    transition:border-color .15s,box-shadow .15s,background .15s}
+  .fld select:hover{border-color:var(--line-strong)}
+  .fld select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.18)}
+  .fld option:checked{background:rgba(var(--acc-rgb),.34);color:var(--on-acc)}
+  .fld option{background:var(--option-bg);color:var(--txt)}
+  .fld input.mono{font-family:var(--mono);font-size:12.5px}
+  .fld input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.18)}
+  .fld .hint{font-size:11.5px;color:var(--dim);line-height:1.5}
+  .secretline{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut)}
+  .secretline input[type=checkbox]{accent-color:var(--acc)}
+  .check{flex-direction:row;align-items:center;gap:9px}
+  .check input{width:16px;height:16px;accent-color:var(--acc)}
+  .check label{font-size:13px;color:var(--txt);font-weight:500}
+  details.adv{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:rgba(var(--field-rgb),.16);padding:0}
+  details.adv>summary{cursor:pointer;list-style:none;padding:14px 18px;font-size:12.5px;font-weight:700;color:var(--mut);letter-spacing:.02em}
+  details.adv>summary::-webkit-details-marker{display:none}
+  details.adv>summary::before{content:'▸';display:inline-block;margin-right:9px;transition:transform .15s}
+  details.adv[open]>summary::before{transform:rotate(90deg)}
+  details.adv .body{padding:0 18px 18px}
+  .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+  .actions .spacer{flex:1}
+  .target{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.7;word-break:break-all;background:rgba(var(--field-rgb),.22);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .target b{color:var(--mut);font-weight:600}
+
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+  </div>
+  <div>
+    <h1>{{ t('settings_title') }}</h1>
+    <div class="subtitle">{{ t('settings_lede') }}</div>
+  </div>
+  <div class="spacer"></div>
+  {% if cfg.mock %}
+  <span class="pill mock"><span class="dot"></span>{{ t('pill_mock') }}</span>
+  {% else %}
+  <span class="pill live"><span class="dot"></span>{{ t('pill_live') }} · {{ profile_name or cfg.workspace }}</span>
+  {% endif %}
+  <nav class="themesw" aria-label="{{ t('theme_switch') }}">
+    {% for th in themes %}
+      {% if th.active %}
+      <span class="lbtn cur" aria-current="true" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</span>
+      {% else %}
+      <a class="lbtn" href="/theme/{{ th.code }}" rel="nofollow" title="{{ th.name }}">{% if th.code == 'light' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{% endif %}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  <nav class="langsw" aria-label="{{ t('language_switch') }}">
+    {% for l in languages %}
+      {% if l.active %}
+      <span class="lbtn cur" aria-current="true" title="{{ t('language_switch') }}">{{ l.name }}</span>
+      {% else %}
+      <a class="lbtn" href="/lang/{{ l.code }}" rel="nofollow" title="{{ t('language_switch') }}">{{ l.name }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+</header>
+
+{# Labels are named statically so the template scan can verify each key exists. #}
+{% set GROUP_LABEL = {'connection': t('group_connection'),
+                      'auth': t('group_auth'), 'tuning': t('group_tuning')} %}
+<div class="wrap">
+  {% if setup_missing %}
+  <div class="banner ok">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span>{{ t('setup_banner') }}
+      <br><b>{{ t('setup_missing') }}</b>: {{ setup_missing | join(' · ') }}</span>
+  </div>
+  {% endif %}
+  {% if not options_found %}
+  <div class="banner err">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+    {{ t('detected_unreachable') }}
+  </div>
+  {% endif %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="banner {{ 'err' if category=='error' else 'ok' }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <div class="head">
+      <h2>{{ t('profiles_title') }}</h2>
+      <div class="spacer"></div>
+      <a class="btn sm" href="/settings?new=1">{{ t('set_new') }}</a>
+      <form method="post" action="/settings/lock" style="display:inline">
+        <button class="btn sm" type="submit">{{ t('lock') }}</button>
+      </form>
+    </div>
+    <p class="lede">{{ t('unlocked_note', minutes=minutes) }}</p>
+
+    {% if profiles %}
+    <table class="tbl">
+      <thead><tr>
+        <th>{{ t('set_profile_name') }}</th><th>{{ t('writes_to') }}</th>
+        <th>{{ t('profiles_cred') }}</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for pr in profiles %}
+        <tr>
+          <td>
+            <b>{{ pr.name }}</b>
+            {% if pr.active %} <span class="badge">{{ t('active_badge') }}</span>{% endif %}
+          </td>
+          <td class="code dim">{{ pr.payload.GATEWAY_URL or '—' }}<br>
+            <span class="dim">{{ pr.payload.ORG_ID or '—' }} / {{ pr.payload.WORKSPACE_ID or '—' }}</span></td>
+          <td class="dim" style="font-size:12px">
+            {% if pr.payload.API_TOKEN_hint %}{{ t('set_token') }} · {{ pr.payload.API_TOKEN_hint }}
+            {% elif pr.payload.USER %}{{ pr.payload.USER }}
+            {% else %}{{ t('secret_unset') }}{% endif %}
+          </td>
+          <td>
+            <div class="rowbtns">
+              {% if not pr.active %}
+              <form method="post" action="/settings/activate">
+                <input type="hidden" name="profile_id" value="{{ pr.id }}">
+                <button class="btn sm" type="submit">{{ t('set_activate') }}</button>
+              </form>
+              {% endif %}
+              <a class="btn sm" href="/settings?edit={{ pr.id }}">{{ t('set_edit') }}</a>
+              <form method="post" action="/settings/delete" data-confirm="1">
+                <input type="hidden" name="profile_id" value="{{ pr.id }}">
+                <button class="btn sm warnbtn" type="submit">{{ t('set_delete') }}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="lede">{{ t('no_profiles') }}</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>{% if target and target.id %}{{ t('set_edit') }}: {{ target.name }}{% else %}{{ t('set_new') }}{% endif %}</h2>
+    </div>
+    <form method="post" action="/settings/save" id="pform" autocomplete="off">
+      <input type="hidden" name="profile_id" value="{{ target.id if target and target.id else '' }}">
+      <div class="group">
+        <h3>{{ t('set_profile_name') }}</h3>
+        <div class="fields">
+          <div class="fld wide">
+            <label for="profile_name">{{ t('set_profile_name') }}</label>
+            <input type="text" id="profile_name" name="profile_name" required
+                   value="{{ target.name if target else '' }}" placeholder="demo_ws @ 192.0.2.10">
+          </div>
+        </div>
+      </div>
+
+      {% for gname in ['connection', 'auth', 'tuning'] %}
+      <div class="group">
+        <h3>{{ GROUP_LABEL[gname] }}</h3>
+        <div class="fields">
+          {% for f in fields[gname] %}
+          <div class="fld {% if f.kind in ['secret'] or f.key in ['GATEWAY_URL','EXEC_ENV'] %}wide{% endif %}">
+            <label for="{{ f.name }}">{{ t(f.label) }}{% if f.required %} *{% endif %}</label>
+            {% if f.kind == 'secret' %}
+            <input type="password" id="{{ f.name }}" name="{{ f.name }}" class="mono"
+                   placeholder="{{ f.secret_hint or t('secret_unset') }}" {% if not f.value %}autocomplete="new-password"{% endif %}>
+            <div class="secretline">
+              {% if f.secret_hint %}
+              <span>{{ t('secret_set') }} · {{ f.secret_hint }}</span>
+              <label class="secretline" for="{{ f.clear_name }}">
+                <input type="checkbox" id="{{ f.clear_name }}" name="{{ f.clear_name }}"> {{ t('set_delete') }}
+              </label>
+              {% else %}
+              <span class="dim">{{ t('secret_unset') }}</span>
+              {% endif %}
+            </div>
+            {% elif f.kind == 'bool' %}
+            <div class="check">
+              <input type="checkbox" id="{{ f.name }}" name="{{ f.name }}" value="on" {% if f.checked %}checked{% endif %}>
+              <label for="{{ f.name }}">{{ t(f.label) }}</label>
+            </div>
+            {% elif f.kind == 'int' %}
+            <input type="number" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}" min="0">
+            {% else %}
+            <input type="text" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}"
+                   class="mono" placeholder="{{ f.placeholder }}"
+                   {% if f.required %}required{% endif %}>
+            {% endif %}
+            {% if f.hint %}<div class="hint">{{ t(f.hint) }}</div>{% endif %}
+            <div class="cfg">{{ f.key }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <details class="adv">
+        <summary>{{ t('group_advanced') }}</summary>
+        <div class="body">
+          <p class="lede" style="margin-top:6px">{{ t('advanced_note') }}</p>
+          <div class="fields">
+            {% for f in fields['advanced'] %}
+            <div class="fld">
+              <label for="{{ f.name }}">{{ t(f.label) }}</label>
+              {% if f.options %}
+              <select id="{{ f.name }}" name="{{ f.name }}">
+                {% if not f.offered and f.value %}
+                <option value="{{ f.value }}" selected>{{ f.value }} — {{ t('not_offered') }}</option>
+                {% endif %}
+                {% for o in f.options %}
+                <option value="{{ o.value }}" {% if o.value == f.value %}selected{% endif %}>{{ o.label }} ({{ o.value }})</option>
+                {% endfor %}
+              </select>
+              {% if not f.offered and f.value %}<div class="hint">{{ t('not_offered') }}</div>{% endif %}
+              {% else %}
+              <input type="text" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}" class="mono">
+              {% endif %}
+              {% if f.hint %}<div class="hint">{{ t(f.hint) }}</div>{% endif %}
+              <div class="cfg">{{ f.key }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button class="btn pri" type="submit" formaction="/settings/save">{{ t('set_save') }}</button>
+        <button class="btn" type="submit" formaction="/settings/test">{{ t('set_test') }}</button>
+        <label class="check">
+          <input type="checkbox" name="activate" value="on" {% if not target %}checked{% endif %}>
+          <span>{{ t('make_active') }}</span>
+        </label>
+        <div class="spacer"></div>
+        <a class="back" href="/">← {{ t('back_app') }}</a>
+      </div>
+    </form>
+
+    <div class="target" style="margin-top:20px">
+      <b>{{ t('target_preview') }}</b><br>
+      API {{ derived.API_BASE }}<br>
+      AUTH {{ derived.TOKEN_URL }}
+    </div>
+  </div>
+</div>
+
+<script>
+  // Delete asks first: a profile is cheap to recreate, but losing the name you
+  // typed and a pasted token is annoying.
+  document.querySelectorAll('form[data-confirm="1"]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!window.confirm({{ t('delete_confirm') | tojson }})) e.preventDefault();
+    });
+  });
+</script>
+
+<script>
+  // Validation banners are transient. Seven seconds is long enough to read one,
+  // and after that an old error sitting above the form gets mistaken for the
+  // current state — especially the long Exastro messages, which wrap.
+  (function () {
+    var LIFE = 7000;
+    document.querySelectorAll('.banner').forEach(function (b, i) {
+      setTimeout(function () {
+        b.classList.add('bye');
+        setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 600);
+      }, LIFE + i * 400);          // staggered so several stay readable
+    });
+  })();
+</script>
+</body>
+</html>

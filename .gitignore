@@ -1,0 +1,33 @@
+# Never commit connection state. Everything below is created by running the app
+# against a real Exastro install, and each item holds either a credential or the
+# customer's own data — none of it belongs in a repository.
+#
+# (Comments are on their own lines throughout this file: git has no trailing
+# comment syntax, so `pattern   # note` would look for a file literally named
+# "pattern   # note" and ignore nothing.)
+
+# EXA_API_TOKEN and the target host
+.env
+
+# saved profiles (API token inside) + PIN hash
+settings.db
+
+# run history: movement, role, sheet and parameter names
+creations.db
+
+# session signing key
+flask_secret.key
+*.key
+
+# Local environment and generated noise
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.server.log
+*.log
+.venv/
+venv/
+*.bak
+
+# throwaway test stores used during development
+_v*.db

@@ -1,0 +1,179 @@
+/* Fonts.
+ *
+ * Poppins, latin subset, the five weights the pages use (400-800). Nothing
+ * is fetched at runtime: the files are served from /static/, so a customer
+ * intranet with no route to a
+ * font CDN gets the same type as the developer does — and no render-blocking
+ * external request that stalls first paint until it times out. If the files are
+ * missing the stacks below fall through to the system UI face, which is a
+ * degraded but readable page rather than a broken one.
+ *
+ * Japanese is NOT set here: Poppins has no CJK coverage, so `html[lang=ja]`
+ * switches to Noto Sans JP, whose 400 weight stays solid on a dark field.
+ */
+@font-face{
+  font-family:'Poppins';
+  src:url('/static/fonts/poppins-400.woff2') format('woff2');
+  font-weight:400; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Poppins';
+  src:url('/static/fonts/poppins-500.woff2') format('woff2');
+  font-weight:500; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Poppins';
+  src:url('/static/fonts/poppins-600.woff2') format('woff2');
+  font-weight:600; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Poppins';
+  src:url('/static/fonts/poppins-700.woff2') format('woff2');
+  font-weight:700; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Poppins';
+  src:url('/static/fonts/poppins-800.woff2') format('woff2');
+  font-weight:800; font-style:normal; font-display:swap;
+}
+
+/* Exastro_Automate — one palette for every page.
+ *
+ * The five templates used to carry identical copies of this block, which is how
+ * a colour fix ended up applied to three pages and missed on two. Only the
+ * tokens live here now; each page keeps its own layout rules.
+ *
+ * Every colour is either a semantic token (--txt, --panel) or an `rgb()` channel
+ * triple so that a literal like `rgba(var(--acc-rgb),.18)` re-tints itself with
+ * the theme. That indirection is the whole point: a light theme is the token
+ * block at the bottom of this file, not a second copy of the stylesheet.
+ */
+
+:root{
+  /* surfaces */
+  --bg:#0b1020;
+  --panel:rgba(255,255,255,.035);
+  --panel-2:rgba(255,255,255,.05);
+  --line:rgba(255,255,255,.09);
+  --line-strong:#43506e;
+  --field-rgb:0,0,0;          /* inset fills: darker than the page */
+  --hi-rgb:255,255,255;       /* surface emphasis: lighten */
+  --option-bg:#141a2e;
+  --scrim-rgb:11,16,32;
+
+  /* text */
+  --txt:#e6ecf7;
+  --mut:#9aa5ba;
+  --dim:#7f8aa3;
+
+  /* brand and status */
+  --acc:#6366f1;   --acc-rgb:99,102,241;
+  --acc2:#8b5cf6;  --acc2-rgb:139,92,246;
+  --ok:#34d399;    --ok-rgb:52,211,153;
+  --warn:#fbbf24;  --warn-rgb:251,191,36;
+  --err:#f87171;   --err-rgb:248,113,113;
+  --info-rgb:14,165,233;
+  --violet-rgb:167,139,250;
+  --float-rgb:234,179,8;
+
+  /* text that sits on a tint of the colour above */
+  --acc-text:#c7d2fe;
+  --ok-text:#6ee7b7;
+  --warn-text:#fcd34d;
+  --err-text:#fecaca;
+  --info-text:#7dd3fc;
+  --violet-text:#c4b5fd;
+  --float-text:#fde047;
+  --on-acc:#fff;
+
+  --sans:'Poppins',-apple-system,'Segoe UI',Helvetica,Arial,'Noto Sans JP',Meiryo,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+
+  --page-bg:
+    radial-gradient(900px 600px at 12% -8%, rgba(99,102,241,.22), transparent 60%),
+    radial-gradient(800px 550px at 95% 0%, rgba(139,92,246,.18), transparent 55%),
+    radial-gradient(700px 700px at 50% 115%, rgba(14,165,233,.10), transparent 60%),
+    var(--bg);
+}
+
+/* Light mode. Not an inversion: the washes are lifted off the corners so they
+ * do not read as stains on paper, the tints go up while the text colours go
+ * down to their 700/800 steps, and inset fills turn white because a light page
+ * has nothing dark to sit against. */
+html[data-theme=light]{
+  --bg:#f2f5fb;
+  --panel:rgba(15,23,42,.035);
+  --panel-2:rgba(15,23,42,.055);
+  --line:rgba(15,23,42,.13);
+  --line-strong:#c3cbdc;
+  --field-rgb:255,255,255;
+  --hi-rgb:15,23,42;
+  --option-bg:#ffffff;
+  --scrim-rgb:203,213,225;
+
+  --txt:#141a2b;
+  --mut:#48546b;
+  --dim:#5d6a83;
+
+  --acc:#4f46e5;   --acc-rgb:79,70,229;
+  --acc2:#7c3aed;  --acc2-rgb:124,58,237;
+  --ok:#059669;    --ok-rgb:5,150,105;
+  --warn:#b45309;  --warn-rgb:180,83,9;
+  --err:#dc2626;   --err-rgb:220,38,38;
+  --info-rgb:2,132,199;
+  --violet-rgb:109,40,217;
+  --float-rgb:161,98,7;
+
+  --acc-text:#3730a3;
+  --ok-text:#065f46;
+  --warn-text:#7c4a03;
+  --err-text:#991b1b;
+  --info-text:#075985;
+  --violet-text:#5b21b6;
+  --float-text:#7c4a03;
+  --on-acc:#fff;
+
+  --page-bg:
+    radial-gradient(900px 600px at 12% -8%, rgba(79,70,229,.10), transparent 60%),
+    radial-gradient(800px 550px at 95% 0%, rgba(124,58,237,.08), transparent 55%),
+    radial-gradient(700px 700px at 50% 115%, rgba(2,132,199,.07), transparent 60%),
+    var(--bg);
+}
+
+/* Japanese in Noto Sans JP. The previous stack resolved to a third-weight
+ * gothic on Japanese Windows, whose thin strokes go pale at these sizes on a
+ * dark field; Noto ships a true 400 with wider hinting, so the same pixel size
+ * reads solid. */
+ * --mono keeps the coding font first so Latin values stay tabular, and picks up
+ * Noto only for the Japanese glyphs JetBrains Mono does not carry. */
+html[lang=ja]{
+  --sans:'Noto Sans JP','Noto Sans Japanese','Hiragino Kaku Gothic ProN',
+         'Yu Gothic',Meiryo,sans-serif;
+  --mono:'JetBrains Mono','Noto Sans JP','Noto Sans Japanese',ui-monospace,
+         monospace;
+  font-weight:400;
+}
+/* Noto Sans JP is served from the system here, not from a CDN: this runs on a
+ * customer network where an external font request would simply hang. If it is
+ * missing, the fallbacks are the other two Japanese gothics on the machine. */
+
+/* The theme switch reuses the language switch's segmented pill; only the icon
+ * sizing is its own, so both controls sit at the same height on every page. */
+.langsw,.themesw{display:inline-flex;gap:2px;padding:3px;border-radius:10px;
+              background:var(--panel-2);border:1px solid var(--line)}
+.themesw .lbtn{padding:5px 10px}
+.themesw svg{width:14px;height:14px;display:block}
+
+body{
+  font-family:var(--sans);
+  background:var(--page-bg);
+  color:var(--txt);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Native widgets do not inherit a theme: without this the calendar picker and
+ * the select popup keep their dark-mode chrome on a light page. */
+html[data-theme=light] input,html[data-theme=light] select,
+html[data-theme=light] textarea{color-scheme:light}
+:root{color-scheme:dark}
