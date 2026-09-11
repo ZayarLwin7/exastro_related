@@ -360,6 +360,11 @@ class ExastroClient:
     # Nothing in that reply says "wait", so waiting is the only honest handling.
     SUBST_SETTLE = 60          # seconds to keep trying; measured ~11, no bound
     SUBST_POLL = 4             # between attempts
+    # A wall clock alone is not a bound: with the poll set to zero -- as the tests
+    # do, because CI has no patience budget -- an expired window would spin thousands
+    # of reads at a platform that is never going to answer. Rounds are the limit
+    # that always holds.
+    SUBST_MAX_ROUNDS = 20
 
     @staticmethod
     def _is_settling(message: str) -> bool:
@@ -1470,10 +1475,57 @@ class ExastroClient:
                     items.update(again)
             return item, refusal
 
+        # One settling window shared by every key: if the list is behind the
+        # sheet it is behind for all of them, and a three-column sheet should not
+        # cost three minutes to find that out.
+        window = {"until": None, "rounds": 0, "seconds": 0.0}
+
+        def settle(k):
+            """Poll the option list until it agrees with the sheet's definition.
+
+            The refused write is only the visible half of the race. After a rename
+            or a re-create the definition answers with the new label while the list
+            still advertises the old one -- and a key that never resolves never
+            reaches the write, so no refusal happens at all and the run reports a
+            column that plainly exists. Waiting belongs here as much as around the
+            POST, which is what the first fix of this missed.
+            """
+            if window["until"] is None:
+                window["until"] = time.time() + self.SUBST_SETTLE
+            started = time.time()
+            rounds, found, why = 0, None, None
+            while True:
+                if rounds:
+                    time.sleep(self.SUBST_POLL)
+                rounds += 1
+                found, why = resolve(k, fresh=True)
+                if (found or why or rounds >= self.SUBST_MAX_ROUNDS
+                        or time.time() >= window["until"]):
+                    break
+            window["rounds"] += rounds
+            window["seconds"] += time.time() - started
+            # Per-key numbers, or the third column of a sheet would report the
+            # whole step's patience as if it were its own.
+            return found, why, rounds, time.time() - started
+
         results: list[dict] = []
         for key, var_name in targets.items():
             candidate = f"{prefix}{var_name}"
+            waited, expired = "", ""
             item, refusal = resolve(key)
+            # Worth waiting for only when the sheet's own definition has the
+            # column: a key nobody defined is a real mistake and is reported now.
+            if item is None and not refusal and key in (names or {}):
+                item, refusal, rounds, seconds = settle(key)
+                if item and seconds > 0:
+                    waited = (f" [accepted after {rounds} reads "
+                              f"({seconds:.0f}s): ITA rebuilds a sheet's "
+                              f"substitution list asynchronously once a column is "
+                              f"renamed or re-created]")
+                elif item is None and seconds > 0:
+                    expired = (f"; still not offered after waiting "
+                               f"{seconds:.0f}s ({rounds} reads) — run this "
+                               f"again once the sheet's list is rebuilt")
             if item is None and refusal:
                 results.append({"key": key, "variable": candidate,
                                 "status": "ambiguous_column", "detail": refusal})
@@ -1497,7 +1549,10 @@ class ExastroClient:
                     "detail": (f"parameter sheet '{sheet_name}' offers no column "
                                f"named '{key}'; {why}"
                                + (f"; available: {', '.join(sorted(items))}"
-                                  if items else "; none selectable"))})
+                                  if items else "; none selectable")
+                               # Saying "waited" here is the difference between a
+                               # bug report and a retry instruction.
+                               + (expired if item is None else ""))})
                 continue
             if candidate not in selectable:
                 results.append({
@@ -1525,7 +1580,7 @@ class ExastroClient:
                             f"re-named or re-created]")
             status = "linked" if "OK" in outcome else "exists"
             results.append({"key": key, "variable": candidate,
-                            "status": status, "detail": outcome})
+                            "status": status, "detail": outcome + waited})
         return results
 
 

@@ -97,9 +97,13 @@ class FakeExastro:
         # which the list still advertises the OLD label while the definition has
         # moved. `subst_lag` expresses that window in reads, so the client's wait
         # is testable in milliseconds.
+        # The list stays behind the definition for this many reads after a label
+        # moves. Read-based, because the client can be refused nothing at all --
+        # it simply cannot resolve the column, which is the failure the operator
+        # reported: "offers no column named 'ans_age'; available: Age, Name".
         self.subst_lag = 0
         self._subst_stale: dict[str, dict] = {}
-        self._subst_refused: dict[str, int] = {}
+        self._subst_reads: dict[str, int] = {}
         # The other half of the race, and the half the client can do nothing
         # about: the write carries a string the list advertises, and ITA still
         # refuses because its own view has not settled. `subst_refuse` refuses
@@ -303,7 +307,7 @@ class FakeExastro:
             was, now = prev.get(rest), str(col.get("item_name") or "")
             if rest and was and now and was != now:
                 self._subst_stale.setdefault(name, {})[rest] = was
-                self._subst_refused[name] = 0
+                self._subst_reads[name] = 0
         self.sheet_defs[name] = {"menu": {**(cur.get("menu") or {}),
                                          **(body.get("menu") or {})},
                                 "column": newcols}
@@ -321,7 +325,8 @@ class FakeExastro:
             # with the message below, which is what makes a rename a race rather
             # than a plain edit.
             want = str(params.get("menu_group_menu_item") or "")
-            if want and want in self._column_items().values() and self.subst_refuse:
+            if want and want in self._column_items(advance=False).values() \
+                    and self.subst_refuse:
                 self.subst_refuse -= 1
                 return FakeResponse(
                     {"result": "499-00201",
@@ -329,11 +334,7 @@ class FakeExastro:
                          {"0": {"menu_group_menu_item": [
                              "The input value is an invalid value."
                              f"(input value:{want})"]}}, ensure_ascii=False)}, 499)
-            if want and want not in self._column_items().values():
-                parts = want.split(":")
-                if len(parts) > 1:
-                    self._subst_refused[parts[1]] = \
-                        self._subst_refused.get(parts[1], 0) + 1
+            if want and want not in self._column_items(advance=False).values():
                 msg = (f"代入値自動登録用の値は不正な値です。(入力値:{want})"
                        if self.locale == "ja" else
                        f"The input value is an invalid value.(input value:{want})")
@@ -381,7 +382,7 @@ class FakeExastro:
         tail = ",対象ID:[" if ja else ", Target ID: ["
         return '{"0": {"%s": ["%s%s%s\'%s\'])"]}}' % (label, phrase, params, tail, clash)
 
-    def _column_items(self) -> dict:
+    def _column_items(self, advance: bool = True) -> dict:
         """Selectable `menu_group_menu_item` values, in the account's language.
 
         Real ITA returns these fully localized — 'Substitution value:Sheet:
@@ -403,7 +404,12 @@ class FakeExastro:
         out = {}
         for sheet in sheets:
             stale = self._subst_stale.get(sheet) or {}
-            if not stale or self._subst_refused.get(sheet, 0) >= self.subst_lag:
+            if stale and advance:
+                if self._subst_reads.get(sheet, 0) < self.subst_lag:
+                    self._subst_reads[sheet] = self._subst_reads.get(sheet, 0) + 1
+                else:
+                    stale = {}
+            elif stale:
                 stale = {}
             for logical, display in self._columns_of(sheet, by_sheet).items():
                 if logical:
@@ -469,6 +475,11 @@ def client_for(monkeypatch):
         monkeypatch.setattr(client, "token", lambda: "t")
         monkeypatch.setattr(client.session, "request", fake.request)
         client._fake = fake
+        # Nothing that waits on a platform clock belongs in a unit test unless the
+        # test asks for it: the settle windows default to "give up after one
+        # attempt", and the tests that exercise the waiting raise it themselves.
+        client.SUBST_POLL = 0
+        client.SUBST_SETTLE = 0
         return client
     return build
 
@@ -3334,9 +3345,10 @@ def test_the_pages_script_actually_parses(mock_client, tmpdb):
 # The substitution list lags a rename: wait, retry, and move the old row
 # ---------------------------------------------------------------------------
 
-def _no_waiting(c):
-    """A minute of real sleeping proves nothing; the loop is the behaviour."""
+def _no_waiting(c, patience=60):
+    """Keep the retry behaviour, drop the sleeping: the loop is what is tested."""
     c.SUBST_POLL = 0
+    c.SUBST_SETTLE = patience
     return c
 
 
@@ -3485,3 +3497,85 @@ def test_the_scrub_denylist_is_not_itself_committed(tmp_path):
     assert not [f for f in tracked if "denylist" in f]
     ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert ".scrub-denylist" in ignore
+
+
+# ---------------------------------------------------------------------------
+# The operator's report: "offers no column named 'ans_age'; available: Age, Name"
+# ---------------------------------------------------------------------------
+
+def test_a_column_that_exists_but_is_not_offered_yet_is_waited_for(client_for):
+    """The failure reported: a blank display name reverted the column to its
+    logical name, the definition answered with it at once, and the substitution
+    list was still advertising the old label -- so the run reported a column that
+    plainly exists. A refused write is the visible half of the race; this is the
+    half where nothing is refused and the key simply never resolves."""
+    c = _no_waiting(client_for(variables={"v1": "m1:ans_age"}))
+    c.create_parameter_sheet("m1", {"ans_age": "27"},
+                             {"ans_age": {"name": "Age"}})
+    c.create_parameter_sheet("m1", {"ans_age": "27"}, {"ans_age": {"name": ""}})
+    c._fake.subst_lag = 5            # several reads behind, as measured
+    rows = c.link_movement_parameter("m1", "m1", {"ans_age": "27"}, wait=False)
+    assert rows[0]["status"] == "linked", rows[0]
+    detail = rows[0]["detail"]
+    assert "accepted after" in detail and "reads" in detail, detail
+    # the reason belongs in the report: a run that paused for a dozen seconds on
+    # one key looks like a hang unless it says what it was waiting for
+    assert "rebuilds a sheet's substitution list" in detail, detail
+
+
+def test_the_waited_for_column_is_bound_by_its_current_label(client_for):
+    c = _no_waiting(client_for(variables={"v1": "m1:ans_age"}))
+    c.create_parameter_sheet("m1", {"ans_age": "27"}, {"ans_age": {"name": "Age"}})
+    c.create_parameter_sheet("m1", {"ans_age": "27"}, {"ans_age": {"name": ""}})
+    c._fake.subst_lag = 5
+    c.link_movement_parameter("m1", "m1", {"ans_age": "27"}, wait=False)
+    writes = [w for w in c._fake.writes if w[1] == cfg.SUBST_MENU]
+    assert writes[-1][2]["menu_group_menu_item"].endswith("パラメータ/ans_age"), \
+        writes[-1][2]
+
+
+def test_a_list_that_never_catches_up_says_so_and_tells_the_operator_what_to_do(client_for):
+    """The report used to be a bare 'no column of it is offered', which reads as
+    'your JSON is wrong' when the platform is merely behind."""
+    c = _no_waiting(client_for(variables={"v1": "m1:ans_age"}))
+    c.create_parameter_sheet("m1", {"ans_age": "27"}, {"ans_age": {"name": "Age"}})
+    c.create_parameter_sheet("m1", {"ans_age": "27"}, {"ans_age": {"name": ""}})
+    c._fake.subst_lag = 999
+    rows = c.link_movement_parameter("m1", "m1", {"ans_age": "27"}, wait=False)
+    assert rows[0]["status"] == "missing_column", rows[0]
+    detail = rows[0]["detail"]
+    assert "waiting" in detail and "run this again" in detail, detail
+    assert "Available" not in detail or "Age" in detail, "the stale choices are named"
+
+
+def test_a_column_the_sheet_does_not_have_is_not_waited_for(client_for):
+    """The wait exists for the platform's delay, not for the operator's typos: a
+    key the definition never mentions is reported in the same request as before."""
+    c = _no_waiting(client_for(variables={"v1": "m1:ans_age"}))
+    c.create_parameter_sheet("m1", {"ans_age": "27"})
+    before = len([w for w in c._fake.writes])
+    rows = c.link_movement_parameter("m1", "m1", {"nonexistent": "1"}, wait=False)
+    assert rows[0]["status"] == "missing_column", rows[0]
+    assert "waiting" not in rows[0]["detail"], rows[0]["detail"]
+    assert len([w for w in c._fake.writes]) == before
+
+
+def test_the_wait_is_shared_and_capped_by_rounds_as_well_as_seconds(client_for):
+    """Three columns behind by the same amount must cost one window, and the
+    window has to end even when the clock is switched off for the tests."""
+    c = _no_waiting(client_for(variables={"v1": "m1:a", "v2": "m1:b",
+                                          "v3": "m1:c"}), patience=9999)
+    c.create_parameter_sheet("m1", {"a": "1", "b": "2", "c": "3"},
+                             {"a": {"name": "Alpha"}, "b": {"name": "Beta"},
+                              "c": {"name": "Gamma"}})
+    c.create_parameter_sheet("m1", {"a": "1", "b": "2", "c": "3"},
+                             {"a": {"name": ""}, "b": {"name": ""},
+                              "c": {"name": ""}})
+    c._fake.subst_lag = 9999
+    started = time.time()
+    rows = c.link_movement_parameter("m1", "m1", {"a": "1", "b": "2", "c": "3"},
+                                     wait=False)
+    assert [r["status"] for r in rows] == ["missing_column"] * 3
+    # 3 keys x 20 rounds would be 60 reads with no bound; the window is shared and
+    # rounds are capped, so the whole step costs one budget instead of three
+    assert max(r["detail"].count("reads") for r in rows) == 1

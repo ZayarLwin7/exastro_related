@@ -330,7 +330,7 @@ switch does — off by default, and it touches only the columns whose flags actu
 differ:
 
 ```
-updated: parameter sheet 'probe_cols' set 'p_str' (unique*); * applied by
+updated: parameter sheet 'X' set 'p_str' (unique*); * applied by
 re-creating the column, so values already entered for it on the sheet's Input
 screen are gone
 ```
@@ -408,6 +408,39 @@ sheet step succeed and the binding step fail in one run. The binding now:
   than a bare `failed`;
 * treats only a refusal that names `menu_group_menu_item` as this race, so a
   genuinely invalid value is not sat on for a minute.
+
+The same window has a quieter half, and it is the one that bit first: a key that
+cannot be resolved never reaches the write, so nothing is refused and the run simply
+reports a column that plainly exists. Measured — blanking a display name on a scratch
+sheet (the definition reverts to the logical name immediately) and polling both
+views:
+
+| after the revert | the definition says | the list offers | the resolver says |
+| --- | --- | --- | --- |
+| +1.0 s | `p_str` | `Label One` | **missing** |
+| +5.2 s | `p_str` | `Label One` | **missing** |
+| +8.7 s | `p_str` | `p_str` | found |
+
+So the binding step waits for the list to agree with the sheet **before** reporting a
+missing column — and only when the sheet's own definition has the column, so a key
+nobody defined is still reported in the same request as before. One window is shared
+across the keys of a run (if the list is behind, it is behind for all of them) and is
+capped by reads as well as seconds, because a clock switched off for the tests must
+not spin thousands of queries at a platform that is never going to answer. When the
+window expires the report says what it means rather than sounding like a typo:
+
+```
+parameter sheet 'X' offers no column named 'ans_age'; no column of it is offered;
+available: Age, Name; still not offered after waiting 9s (20 reads) — run this
+again once the sheet's list is rebuilt
+```
+
+and when it closes, the bound row says so:
+
+```
+OK [accepted after 2 reads (9s): ITA rebuilds a sheet's substitution list
+asynchronously once a column is renamed or re-created]
+```
 
 Then the row itself. `_upsert` can only react to ITA calling a write a duplicate,
 and after a rename the item string differs — so ITA does not, the POST would
