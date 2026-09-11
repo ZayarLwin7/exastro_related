@@ -31,3 +31,6 @@ venv/
 
 # throwaway test stores used during development
 _v*.db
+
+# the platform inventory, pasted in locally; never committed
+.scrub-denylist

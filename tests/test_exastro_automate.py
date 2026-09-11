@@ -3440,3 +3440,48 @@ def test_a_retried_write_asks_again_instead_of_insisting(client_for):
     c.link_movement_parameter("m1", "m1", {"a": "1"}, wait=False)
     # one read to start, then a fresh one for each of the two refusals
     assert reads["n"] >= 3, reads
+
+
+# ---------------------------------------------------------------------------
+# The sweep that keeps real names out of the public checkout
+# ---------------------------------------------------------------------------
+
+SCRUB_TOOL = ROOT / "tools" / "scrub_check.py"
+
+
+def test_the_scrub_check_finds_what_it_is_given(tmp_path):
+    """The check is a one-file script because its input can never be committed.
+    It is worth testing for the obvious failure: a tool that always says "clean"
+    is worse than no tool, because it is the reason the next person trusts it."""
+    import subprocess
+    # assembled, so the "not present" name does not appear as a literal in this
+    # file -- which the tool would otherwise find, correctly, and report
+    absent = "zzz" + "-" + "not-a-name" + "-" + "zzz"
+    deny = tmp_path / "denylist"
+    deny.write_text(f"def\n\n# a comment\n{absent}\n", encoding="utf-8")
+    out = subprocess.run([sys.executable, str(SCRUB_TOOL), str(deny)],
+                         capture_output=True, text=True)
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert "def" in out.stdout, out.stdout          # a token that is really there
+    listed = out.stdout.split("still present:")[1]
+    assert "def" in listed and absent not in listed, out.stdout
+
+    empty = tmp_path / "empty"
+    empty.write_text("", encoding="utf-8")
+    out = subprocess.run([sys.executable, str(SCRUB_TOOL), str(empty)],
+                         capture_output=True, text=True)
+    assert out.returncode == 0 and "clean" in out.stdout, out.stdout
+
+    out = subprocess.run([sys.executable, str(SCRUB_TOOL), str(tmp_path / "gone")],
+                         capture_output=True, text=True)
+    assert out.returncode == 2, out.stdout + out.stderr
+
+
+def test_the_scrub_denylist_is_not_itself_committed(tmp_path):
+    """The list of things to keep out must not be the thing that gets out."""
+    import subprocess
+    tracked = subprocess.run(["git", "ls-files"], capture_output=True,
+                             text=True).stdout.split()
+    assert not [f for f in tracked if "denylist" in f]
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".scrub-denylist" in ignore
