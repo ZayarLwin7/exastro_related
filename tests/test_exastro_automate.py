@@ -3919,6 +3919,9 @@ def test_the_chosen_group_is_spelled_for_ita_once(mock_client, tmpdb):
 
 def test_the_host_endpoint_answers_with_groups_and_their_hosts(mock_client):
     body = mock_client.get("/api/host_groups").get_json()
+    # the page labels options with the value ITA stores, and takes the spelling
+    # from here rather than learning it a second time
+    assert body["prefix"] == "[HG]", body
     assert {"name": "DEMO_GROUP",
             "hosts": ["demo_host_a", "demo_host_b"]} in body["groups"]
     assert [g["name"] for g in body["groups"]] == ["DEMO_GROUP", "DEMO_GROUP_ZOS"]
@@ -4067,8 +4070,8 @@ def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
         os.unlink(path)
     assert done.returncode == 0, done.stdout[-2500:] + done.stderr[-2500:]
     for case in ("the switch opens the dialog and asks the install",
-                 "each group is labelled with its own host count",
-                 "a group picked at zero hosts says so, by name, without blocking it",
+                 "options read [HG]group while the form posts the plain name",
+                 "the note reports membership and warns about a group at zero",
                  "confirming posts the group and echoes the value ITA will store",
                  "confirming with no group keeps the dialog open and says why",
                  "cancel turns the switch off and clears the choice",

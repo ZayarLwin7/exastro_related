@@ -58,8 +58,10 @@ __POPUP_BODY__
 
 /* ---- scenarios ---------------------------------------------------------- */
 (async () => {
-  answers.push({ groups: [{ name: "DEMO_GP", hosts: ["demo_host_a", "demo_host_b"] },
-                          { name: "EMPTY_GP", hosts: [] }] });
+  // the install sends its own spelling, so the page never hard-codes `[HG]`
+  answers.push({ prefix: "[HG]", groups: [
+    { name: "DEMO_GP", hosts: ["demo_host_a", "demo_host_b"] },
+    { name: "EMPTY_GP", hosts: [] }] });
 
   // 1. flipping the switch must actually show the dialog
   els.create_op.checked = true;
@@ -69,31 +71,29 @@ __POPUP_BODY__
   await flush();
   ok("the switch opens the dialog and asks the install");
 
-  // 2. one dropdown, listing groups, with the membership count beside each name
+  // 2. the label is the value ITA stores; the posted value stays the plain name
   const opts = () => els["hp-group"].children;
   if (opts().map(o => o.value).join(",") !== "DEMO_GP,EMPTY_GP") {
-    bad("groups are listed as returned", opts().map(o => o.value));
+    bad("the form posts plain names", opts().map(o => o.value));
   }
-  if (opts()[0].textContent !== "DEMO_GP (2)") {
-    bad("a group shows how many hosts it has", opts()[0].textContent);
+  if (opts().map(o => o.textContent).join(",") !== "[HG]DEMO_GP,[HG]EMPTY_GP") {
+    bad("the dropdown shows the stored spelling", opts().map(o => o.textContent));
   }
-  if (opts()[1].textContent !== "EMPTY_GP (0)") {
-    bad("including when it has none", opts()[1].textContent);
-  }
-  ok("each group is labelled with its own host count");
+  ok("options read [HG]group while the form posts the plain name");
 
-  // 3. the note explains the scope, and warns about a group with nothing in it
-  if (!/whole group/.test(els["hp-note"].textContent)) { bad("the note explains the scope", els["hp-note"].textContent); }
+  // 3. the count moved into the note, where there is room for a sentence
+  if (!/DEMO_GP has 2 host\(s\) linked/.test(els["hp-note"].textContent)) {
+    bad("a chosen group reports its membership", els["hp-note"].textContent);
+  }
   els["hp-group"].value = "EMPTY_GP";
   els["hp-group"].fire("change");
-  if (!/no hosts linked to it yet/.test(els["hp-note"].textContent)) {
-    bad("an empty group is called out", els["hp-note"].textContent);
+  if (!/EMPTY_GP.*no hosts linked to it yet/.test(els["hp-note"].textContent)) {
+    bad("an empty group is called out, by name", els["hp-note"].textContent);
   }
-  if (!/EMPTY_GP/.test(els["hp-note"].textContent)) { bad("by name", els["hp-note"].textContent); }
   els["hp-group"].value = "DEMO_GP";
   els["hp-group"].fire("change");
-  if (!/whole group/.test(els["hp-note"].textContent)) { bad("and the warning goes away", els["hp-note"].textContent); }
-  ok("a group picked at zero hosts says so, by name, without blocking it");
+  if (!/has 2 host/.test(els["hp-note"].textContent)) { bad("and the note follows the choice", els["hp-note"].textContent); }
+  ok("the note reports membership and warns about a group at zero");
 
   // 4. confirming posts the group and closes
   els["hp-group"].value = "DEMO_GP";
@@ -129,7 +129,7 @@ __POPUP_BODY__
   ok("switching off clears the posted field");
 
   // 7. an install with no groups says so instead of offering an empty box
-  answers.push({ groups: [] });
+  answers.push({ prefix: "[HG]", groups: [] });
   groups_reset();
   els.create_op.checked = true;
   els.create_op.fire("change");

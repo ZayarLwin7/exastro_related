@@ -455,12 +455,15 @@ lock token echoed back unchanged — instead of adding a second one.
 Off by default. Switching **Create Operation and Input data** on opens a dialog with
 one question — which host group — and the run then writes two more rows after the
 parameter work. The group is the whole choice: the Input row is addressed to
-`[HG]<group>`, so the movement executes on every host linked into it. A count beside
-each name is that group's own membership, read from the install; a group listed with
-`(0)` can still be chosen, which is better seen here than inferred from a run that
-had nothing to execute against. Choosing a group at zero changes the note under the
-dropdown to name it — creating a group does not put hosts *in* it, that happens in
-the host-link list, and ITA accepts `[HG]name` for an empty group without comment:
+`[HG]<group>`, so the movement executes on every host linked into it. Each option is labelled with the value ITA
+will store (`[HG]TEST_HOST`), while the form posts the plain name and the route
+spells it once, from the same config constant the endpoint hands to the page — a
+second place that knows that spelling is a second place that can disagree.
+Membership moved to the note under the dropdown: a chosen group reports how many
+hosts are linked into it, and a group at zero says so by name. That is worth
+reading before you run — creating a group does not put hosts *in* it, linking them
+in `host_link_list` does, and ITA accepts `[HG]name` for an empty group without
+comment. Nothing is blocked: a group empty now may be filled in five minutes:
 
 ```
 POST .../menu/operation_list/maintenance/

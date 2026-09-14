@@ -521,6 +521,7 @@ const T = {{ {
   'grid_unreadable': t('grid_unreadable'),
   'host_group_hint': t('host_group_hint'), 'no_groups': t('no_groups'),
   'no_hosts_in_group': t('no_hosts_in_group'),
+  'host_group_count': t('host_group_count'),
   'host_chosen': t('host_chosen'), 'err_no_host_group': t('err_no_host_group'),
 } | tojson }};
 </script>
@@ -872,8 +873,9 @@ const T = {{ {
   var echo = document.getElementById('hostecho');
   var gSel = document.getElementById('hp-group');
   var note = document.getElementById('hp-note');
-  var groups = null, loading = null;
+  var groups = null, loading = null, prefix = '';
 
+  // (`fmt` is a declaration further down, so it is hoisted and usable here.)
   function say(txt) {
     echo.textContent = txt || '';
     echo.style.display = txt ? 'block' : 'none';
@@ -882,18 +884,27 @@ const T = {{ {
     // split/join, not replace: replace() with a string fills only the first `@@`,
     // and an echo that leaks the placeholder spells the value wrong on screen
     var v = toggle.checked ? gHidden.value : '';
-    say(v ? T.host_chosen.split('@@').join(v) : '');
+    say(v ? fmt(T.host_chosen, prefix + v) : '');
   }
   /* The count beside each name is the install's own membership, so a group
      picked at zero is worth saying out loud: ITA accepts `[HG]name` for an empty
      group and the run then has nowhere to execute. Nothing here blocks it --
      an empty group today may be filled in five minutes, and that is the
      operator's call, not this form's. */
+  /* fill each `@@` in turn: join() replaces every occurrence, so a two-slot
+     string filled by chaining joins came out as "X has X host(s)" -- the
+     harness caught that one, not the operator. */
+  function fmt(str) {
+    var parts = String(str).split('@@'), out = parts[0], i;
+    for (i = 1; i < parts.length; i++) { out += (arguments[i] || '') + parts[i]; }
+    return out;
+  }
   function sayNote() {
     var g = find(gSel.value);
-    note.textContent = (g && !(g.hosts || []).length)
-      ? T.no_hosts_in_group.split('@@').join(g.name)
-      : T.host_group_hint;
+    if (!g) { note.textContent = T.host_group_hint; return; }
+    note.textContent = !(g.hosts || []).length
+      ? fmt(T.no_hosts_in_group, g.name)
+      : fmt(T.host_group_count, g.name, String(g.hosts.length));
   }
   function find(name) {
     var list = groups || [];
@@ -904,8 +915,8 @@ const T = {{ {
     gSel.innerHTML = '';
     (groups || []).forEach(function (g) {
       var o = document.createElement('option');
-      o.value = g.name;
-      o.textContent = g.name + ' (' + ((g.hosts && g.hosts.length) || 0) + ')';
+      o.value = g.name;          // the form posts the plain name; the route
+      o.textContent = prefix + g.name;   // spells it the way ITA stores it
       gSel.appendChild(o);
     });
     if (!(groups || []).length) { note.textContent = T.no_groups; return; }
@@ -922,6 +933,7 @@ const T = {{ {
     }).then(function (res) {
       loading = null;
       groups = res.ok ? (res.body.groups || []) : [];
+      prefix = (res.ok && res.body.prefix) || '';
       draw();
     }).catch(function (err) {
       loading = null; groups = [];

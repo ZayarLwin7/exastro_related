@@ -136,8 +136,12 @@ TEXT: dict[str, dict[str, str]] = {
     "dialog_cancel": {"en": "Cancel", "ja": "キャンセル"},
     "no_groups": {"en": "No host groups exist in this workspace.",
                   "ja": "このワークスペースにホストグループがありません。"},
-    "host_chosen": {"en": "The Input row will be addressed to [HG]@@",
-                    "ja": "入力データは [HG]@@ に指定されます"},
+    # the value is filled in by the page from the install's own prefix, so no
+    # string here has to know how ITA spells a group
+    "host_chosen": {"en": "The Input row will be addressed to @@",
+                    "ja": "入力データは @@ に指定されます"},
+    "host_group_count": {"en": "@@ has @@ host(s) linked: the run executes on each.",
+                         "ja": "@@ には @@ 件のホストがリンクされています：実行は各ホストで行われます。"},
     "err_group_offered": {"en": "“@@” is not a host group on this workspace.",
                           "ja": "このワークスペースにホストグループ「@@」はありません。"},
     "err_no_host_group": {"en": "Choose a host group before creating the Operation.",

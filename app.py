@@ -682,13 +682,17 @@ def api_host_groups():
     changes: the lists are tiny (one row per group on a normal install), and a
     popup that fills itself in one round trip cannot show a stale host list
     under a newly chosen group.
+
+    The `prefix` goes with them so the dialog can label an option with the value
+    ITA will actually store: `[HG]` is a config constant, and a second place that
+    knows that spelling is a second place that can disagree with the first.
     """
     try:
         groups = [{"name": g["name"], "hosts": client.hosts_in_group(g["name"])}
                   for g in client.host_groups()]
     except Exception as exc:                       # noqa: BLE001 - report, don't 500
         return jsonify({"groups": [], "error": str(exc)}), 502
-    return jsonify({"groups": groups})
+    return jsonify({"groups": groups, "prefix": cfg.HOST_GROUP_PREFIX})
 
 
 @app.get("/api/sheet/<name>")
