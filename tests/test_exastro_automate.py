@@ -3993,14 +3993,27 @@ def test_the_option_is_a_switch_that_still_posts_a_value(mock_client):
                                           page.index('name="create_op"')]
 
 
-def test_the_hint_says_when_to_leave_it_off_in_both_languages(mock_client):
+def test_the_hint_is_two_lines_and_not_three(mock_client):
+    """The operator asked for two lines. One sentence carrying both halves wrapped
+    to three inside the column, so the wording is split into two strings, each
+    short enough to sit on its own line, and the row is rendered as two `hint`
+    divs rather than a paragraph that breaks wherever the font decides."""
     en = mock_client.get("/").get_data(as_text=True)
-    assert "If you run locally" in en and "leave this" in en
+    row = en[en.index('class="swrow"'):en.index('class="sw"')]
+    assert row.count('class="hint"') == 2, row
+    a = i18n.t("op_input_hint_a", "en")
+    b = i18n.t("op_input_hint_b", "en")
+    assert a in en and b in en
     assert "ServiceNow" in en
+    for line in (a, b):
+        assert len(line) <= 78, f"{line!r} is {len(line)} chars and will wrap"
+    assert '"op_input_hint":' not in pathlib.Path("i18n.py").read_text(
+        encoding="utf-8"), "the one-string version is gone"
+
     mock_client.get("/lang/ja")
     ja = mock_client.get("/").get_data(as_text=True)
-    assert "ローカルで実行する場合はオン" in ja, "the operator's own sentence, in Japanese"
-    assert "If you run locally" not in ja, "one language on screen at a time"
+    assert "ローカル実行：オンにすると" in ja, "the same two lines, in Japanese"
+    assert "Run locally: turn this on" not in ja, "one language on screen at a time"
 
 
 def test_a_route_test_cannot_touch_the_real_history_file():
@@ -4055,7 +4068,7 @@ def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
     assert done.returncode == 0, done.stdout[-2500:] + done.stderr[-2500:]
     for case in ("the switch opens the dialog and asks the install",
                  "each group is labelled with its own host count",
-                 "the note says the run goes to every host in the group",
+                 "a group picked at zero hosts says so, by name, without blocking it",
                  "confirming posts the group and echoes the value ITA will store",
                  "confirming with no group keeps the dialog open and says why",
                  "cancel turns the switch off and clears the choice",

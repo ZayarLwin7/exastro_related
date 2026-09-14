@@ -113,13 +113,18 @@ TEXT: dict[str, dict[str, str]] = {
     # ---- Operation and Input ----------------------------------------------
     "op_input_label": {"en": "Create Operation and Input data",
                        "ja": "オペレーションと入力データを作成"},
-    "op_input_hint": {"en": "If you run locally, turn this on: the Operation and "
-                            "the Input row are created here. If you run from "
-                            "ServiceNow, ServiceNow creates that part — leave this "
-                            "off.",
-                      "ja": "ローカルで実行する場合はオンにしてください。オペレーションと"
-                            "入力データをこちらで作成します。ServiceNow から実行する場合は "
-                            "ServiceNow が作成するため、オフのままにしてください。"},
+    # Two keys, two lines: one sentence with the same content wrapped to three
+    # lines inside a narrower column, and a hint that wraps unpredictably under
+    # its own label reads as part of the heading above it.
+    "op_input_hint_a": {"en": "Run locally: turn this on — the Operation and Input "
+                              "row are created here.",
+                        "ja": "ローカル実行：オンにするとオペレーションと入力データを作成します。"},
+    "op_input_hint_b": {"en": "Run from ServiceNow: that part is made there, so "
+                              "leave this off.",
+                        "ja": "ServiceNow 実行：そちらで作成されるためオフのままにしてください。"},
+    "no_hosts_in_group": {"en": "“@@” has no hosts linked to it yet — add members "
+                                "before running against it.",
+                          "ja": "「@@」にはまだホストがリンクされていません。実行前にメンバーを追加してください。"},
     "host_group": {"en": "Host Group", "ja": "ホストグループ"},
     "host_group_hint": {"en": "The Input row is addressed to the whole group, so "
                             "the run executes on every host linked into it.",

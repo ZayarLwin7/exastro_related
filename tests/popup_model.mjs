@@ -82,12 +82,18 @@ __POPUP_BODY__
   }
   ok("each group is labelled with its own host count");
 
-  // 3. the note explains what choosing a group means
+  // 3. the note explains the scope, and warns about a group with nothing in it
   if (!/whole group/.test(els["hp-note"].textContent)) { bad("the note explains the scope", els["hp-note"].textContent); }
   els["hp-group"].value = "EMPTY_GP";
   els["hp-group"].fire("change");
-  if (!/whole group/.test(els["hp-note"].textContent)) { bad("and stays after a change", els["hp-note"].textContent); }
-  ok("the note says the run goes to every host in the group");
+  if (!/no hosts linked to it yet/.test(els["hp-note"].textContent)) {
+    bad("an empty group is called out", els["hp-note"].textContent);
+  }
+  if (!/EMPTY_GP/.test(els["hp-note"].textContent)) { bad("by name", els["hp-note"].textContent); }
+  els["hp-group"].value = "DEMO_GP";
+  els["hp-group"].fire("change");
+  if (!/whole group/.test(els["hp-note"].textContent)) { bad("and the warning goes away", els["hp-note"].textContent); }
+  ok("a group picked at zero hosts says so, by name, without blocking it");
 
   // 4. confirming posts the group and closes
   els["hp-group"].value = "DEMO_GP";

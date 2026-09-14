@@ -194,7 +194,10 @@
   .swrow{display:flex;align-items:flex-start;gap:14px;margin:16px 0 0}
   .swrow .txt{flex:1 1 auto}
   .swrow .hd{font-size:13.5px;font-weight:650;letter-spacing:-.01em;line-height:1.35}
-  .swrow .hint{margin-top:4px;max-width:56ch}
+  /* 56ch was the reason this wrapped to a third line: the column is wider than
+     that, and two deliberate lines read better than one accidental paragraph. */
+  .swrow .hint{margin-top:3px;line-height:1.5}
+  .swrow .hint:first-of-type{margin-top:5px}
   .sw{position:relative;flex:0 0 auto;width:46px;height:26px;margin-top:2px;cursor:pointer}
   .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
   .sw .track{position:absolute;inset:0;border-radius:999px;background:var(--panel-2);
@@ -387,7 +390,8 @@
         <div class="swrow">
           <div class="txt">
             <div class="hd">{{ t('op_input_label') }}</div>
-            <div class="hint" style="margin-top:3px">{{ t('op_input_hint') }}</div>
+            <div class="hint">{{ t('op_input_hint_a') }}</div>
+            <div class="hint">{{ t('op_input_hint_b') }}</div>
           </div>
           <label class="sw" title="{{ t('op_input_label') }}">
             <input type="checkbox" name="create_op" id="create_op" value="1"
@@ -516,6 +520,7 @@ const T = {{ {
   'grid_seeded': t('grid_seeded'), 'grid_new': t('grid_new'),
   'grid_unreadable': t('grid_unreadable'),
   'host_group_hint': t('host_group_hint'), 'no_groups': t('no_groups'),
+  'no_hosts_in_group': t('no_hosts_in_group'),
   'host_chosen': t('host_chosen'), 'err_no_host_group': t('err_no_host_group'),
 } | tojson }};
 </script>
@@ -879,6 +884,22 @@ const T = {{ {
     var v = toggle.checked ? gHidden.value : '';
     say(v ? T.host_chosen.split('@@').join(v) : '');
   }
+  /* The count beside each name is the install's own membership, so a group
+     picked at zero is worth saying out loud: ITA accepts `[HG]name` for an empty
+     group and the run then has nowhere to execute. Nothing here blocks it --
+     an empty group today may be filled in five minutes, and that is the
+     operator's call, not this form's. */
+  function sayNote() {
+    var g = find(gSel.value);
+    note.textContent = (g && !(g.hosts || []).length)
+      ? T.no_hosts_in_group.split('@@').join(g.name)
+      : T.host_group_hint;
+  }
+  function find(name) {
+    var list = groups || [];
+    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i]; } }
+    return null;
+  }
   function draw() {
     gSel.innerHTML = '';
     (groups || []).forEach(function (g) {
@@ -891,7 +912,7 @@ const T = {{ {
     var want = gHidden.value;
     gSel.value = (groups || []).some(function (g) { return g.name === want; })
       ? want : groups[0].name;
-    note.textContent = T.host_group_hint;
+    sayNote();
   }
   function open() {
     pick.classList.add('on');
@@ -915,7 +936,7 @@ const T = {{ {
     gHidden.value = ''; sync();            // off means off, fields and all
   });
   echo.addEventListener('click', function () { if (toggle.checked) open(); });
-  gSel.addEventListener('change', function () { note.textContent = T.host_group_hint; });
+  gSel.addEventListener('change', sayNote);
   document.getElementById('hp-ok').addEventListener('click', function () {
     var g = gSel.value;
     if (!g) {

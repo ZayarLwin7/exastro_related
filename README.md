@@ -458,7 +458,9 @@ parameter work. The group is the whole choice: the Input row is addressed to
 `[HG]<group>`, so the movement executes on every host linked into it. A count beside
 each name is that group's own membership, read from the install; a group listed with
 `(0)` can still be chosen, which is better seen here than inferred from a run that
-had nothing to execute against:
+had nothing to execute against. Choosing a group at zero changes the note under the
+dropdown to name it — creating a group does not put hosts *in* it, that happens in
+the host-link list, and ITA accepts `[HG]name` for an empty group without comment:
 
 ```
 POST .../menu/operation_list/maintenance/
