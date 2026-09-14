@@ -28,6 +28,10 @@ __pycache__/
 .venv/
 venv/
 *.bak
+# A backup is the same thing its source is: `creations.db.bak-<stamp>` is a copy
+# of the run history, and this file exists so that a `git add -A` taken while
+# looking for something else cannot publish it.
+*.bak-*
 
 # throwaway test stores used during development
 _v*.db

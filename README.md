@@ -754,6 +754,53 @@ export EXA_API_TOKEN='<paste your Platform API token>'   # or set it in .env
 
 Open http://localhost:9200 — or use `./restart.sh` to restart in place.
 
+### Moving it to another environment
+
+Dependencies are in `requirements.txt` (runtime) and `requirements-dev.txt`
+(adding pytest). Python 3.9 or newer; nothing needs a compiler, and every pin
+ships a wheel for Linux and Windows — the whole file was installed into a fresh
+venv and `app.py` imported from it before this section was written. For a network
+with no route to PyPI, `pip download -r requirements.txt -d wheels/` on a
+connected machine, then `pip install --no-index --find-links wheels/ -r
+requirements.txt` on the target. Both recipes are in the file's comments.
+
+What to copy and what to leave:
+
+| | |
+| --- | --- |
+| copy | `*.py`, `templates/`, `static/`, `requirements*.txt`, `restart.sh` |
+| leave behind | `creations.db` (the other environment's run history), `settings.db` (its PIN-locked profiles), `flask_secret.key`, `__pycache__`, `.server.log` |
+| bring over by hand | the gateway, org and workspace — as env vars or as a profile recreated in `/settings` |
+
+`flask_secret.key` is generated if missing, so a fresh copy works immediately;
+keeping two environments' files *different* is the point — sharing one lets a
+session cookie from one be accepted by the other.
+
+Three things worth knowing before the first run in a Japanese environment:
+
+* **The server's clock zone is the operation's zone.** The optional Operation step
+  names itself `<movement><YYYYMMDDhhmmss>` and schedules `scheduled_date_for_execution`
+  from `time.localtime()` — the machine's zone, not the browser's. On a target in
+  `Asia/Tokyo` that is exactly right; on a host left at UTC the name and the
+  schedule will both read two hours early, and nothing in the UI can tell you so.
+  Set the OS clock or `TZ=Asia/Tokyo` and check one created operation before
+  trusting a batch.
+* **One worker, whichever way you run it.** Applying a profile in `/settings`
+  rewrites `config` in the process that served that request and rebuilds its
+  client; a second gunicorn/waitress worker would still be pointing at the old
+  gateway. The built-in server is threaded (a slow catalogue call doesn't block
+  the UI) and this is an internal tool, so one process is not a limitation — it is
+  the assumption. If it ever needs more than one, the profile has to move from
+  module state into something both workers read.
+* **The Japanese text needs nothing installed.** Poppins ships in `static/fonts/`
+  and there is no font CDN on the page, so a locked-down browser still gets the
+  same layout; Japanese resolves through the *viewer's* system stack
+  (`Noto Sans JP, Meiryo, sans-serif`), which any Japanese Windows desktop already
+  has. Only the Exastro gateway needs to be reachable from the server.
+
+If the gateway is HTTPS behind a private CA, `certifi` will not contain that root —
+set `REQUESTS_CA_BUNDLE=/path/to/corp-root.pem` rather than editing the pins.
+
 ### Run history
 
 Every run is recorded in `creations.db` with its **full report** — each step,
@@ -780,9 +827,13 @@ independently, and re-running overwrites the first run's role link and bindings.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-29 tests run against a fake that reproduces ITA's real response envelopes,
-unique-combination rejections and optimistic-lock rules, so the update paths are
-exercised without touching a live workspace.
+246 tests run against a fake that reproduces ITA's real response envelopes,
+unique-combination rejections, the substitution list rebuilding itself after a
+rename, and the format refusals on operation and input rows — so the update paths
+are exercised without touching a live workspace. They need no network and no
+credentials, which is what makes them usable inside a closed production network;
+two of them hand the page's JavaScript to Node and drive it under a stub DOM, and
+skip themselves out loud if Node is absent.
 
 ### Demo mode
 

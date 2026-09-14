@@ -1,0 +1,24 @@
+# Only needed to run the tests; the app itself does not import any of this.
+#
+#   .venv/bin/pip install -r requirements-dev.txt
+#   .venv/bin/python -m pytest tests -q
+#
+# 246 tests, and none of them reach the network or need credentials: the Exastro
+# client is replaced by a fake that answers the way the install was measured to
+# answer, so this suite runs inside a Japanese production network exactly as it
+# runs on a laptop.
+#
+# One thing pytest cannot stub: two tests hand the page's own JavaScript to Node
+# and drive it under a stub DOM (the column grid and the host-group popup),
+# because bugs in that logic -- a dialog pinned closed by an inline style, a
+# placeholder filled twice -- are invisible to every other kind of assertion.
+# Node 18+ on PATH is needed for those two; they skip themselves if it is absent,
+# and say so rather than passing quietly.
+
+-r requirements.txt
+
+pytest==9.1.1
+pluggy==1.6.0
+iniconfig==2.3.0
+packaging==26.3
+Pygments==2.21.0

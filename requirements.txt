@@ -1,0 +1,54 @@
+# Exastro ITA movement automation -- runtime dependencies.
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/python app.py            # then open http://<host>:9200
+#
+# Python 3.9 or newer. Built and tested on 3.12. Nothing here needs a compiler:
+# every package ships wheels for Linux (manylinux) and Windows, so a locked-down
+# target installs from the offline bundle described at the bottom of this file.
+#
+# Only two of these are choices this project made; the rest are what those two
+# pull in. They are pinned anyway, so a production install resolves to the same
+# bytes as the one this was tested against rather than to "whatever is current in
+# three years".
+
+Flask==3.1.3             # the UI: routes, the signed session behind the PIN
+                         # unlock, and the templates
+requests==2.34.2         # the only thing that talks to the Exastro gateway
+
+# --- pulled in by Flask ------------------------------------------------------
+Werkzeug==3.1.8
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+itsdangerous==2.2.0      # signs the session cookie; see `flask_secret.key`
+blinker==1.9.0
+click==8.4.2             # on Windows, pip also installs `colorama` for this
+
+# --- pulled in by requests ---------------------------------------------------
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.19
+urllib3==2.7.0
+
+# No database driver: history and settings profiles live in SQLite, which is in
+# the standard library. No HTTP/2 client, no SDK: the Exastro API is plain JSON
+# over HTTPS, and the token exchange is one POST.
+#
+# Optional, and deliberately not pinned here because the app does not need them
+# to run -- install the one that matches your platform if you want a supervisor
+# rather than `python app.py`:
+#     Linux   gunicorn      (use ONE worker; see "Deploying it elsewhere" below)
+#     Windows waitress      (same: one worker)
+# Check the current version with `pip index versions gunicorn` -- an unpinned
+# name is honest, a stale pin is a lie about what was tested.
+#
+# Offline install (a Japanese production network with no route to PyPI):
+#   1. on a connected machine with the same OS and Python minor version:
+#        pip download -r requirements.txt -d wheels/
+#   2. copy this file and wheels/ across, then:
+#        pip install --no-index --find-links wheels/ -r requirements.txt
+#
+# If the gateway is HTTPS on a private CA, `certifi` above will not contain that
+# root. Point requests at your bundle instead of editing this file:
+#   export REQUESTS_CA_BUNDLE=/etc/ssl/certs/your-corp-root.pem
