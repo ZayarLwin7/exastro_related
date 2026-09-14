@@ -41,6 +41,10 @@
   .composed{margin-top:8px;font-size:12px;color:var(--mut)}
   .composed code{font-family:var(--mono);color:var(--acc2);font-weight:600}
   .note{font-size:11.5px;color:var(--dim);margin-top:7px;line-height:1.45}
+  /* `.hint` was only ever styled inside `.check` and inside a field label, so a
+     hint standing on its own inherited the body font and came out as the
+     loudest text in the row. */
+  .hint{font-size:11.5px;color:var(--dim);line-height:1.5;font-weight:500}
   /* Language switch — top right; one language is rendered at a time. */
   .gear{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
     padding:6px 12px;border-radius:999px;background:var(--panel-2);
@@ -172,20 +176,25 @@
     justify-content:center;background:rgba(var(--scrim-rgb),.78);
     backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);padding:24px}
   #hostpick.on{display:flex}
-  #hostpick .box{background:var(--panel);border:1px solid var(--line);border-radius:18px;
-    padding:24px 26px;max-width:380px;width:100%;box-shadow:0 18px 48px rgba(var(--scrim-rgb),.5)}
-  #hostpick .bt{font-size:15px;font-weight:750;letter-spacing:-.01em}
-  #hostpick label{display:block;margin-top:14px;font-size:12.5px;font-weight:650;color:var(--mut)}
-  #hostpick select{width:100%;margin-top:6px}
-  #hostpick .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+  #hostpick .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:20px 22px;max-width:330px;width:100%;box-shadow:0 18px 48px rgba(var(--scrim-rgb),.5)}
+  #hostpick .bt{font-size:14.5px;font-weight:750;letter-spacing:-.01em}
+  #hostpick .note{margin-top:11px}
+  #hostpick .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+  /* The page's .btn is a full-width submit; the same rule inside a dialog reads
+     as a slab twice the height of the box around it. Same gradient, dialog size. */
+  #hostpick .btn{width:auto;margin:0;padding:9px 15px;font-size:12.5px;
+    border-radius:10px;box-shadow:none}
   #hostpick .ghost{background:transparent;border:1px solid var(--line);color:var(--mut)}
+  #hostpick .ghost:hover{color:var(--txt);border-color:var(--line-strong)}
   #hostecho{cursor:pointer}
   /* A switch, not a tick box: this one opens a dialog and puts scheduled work on
      the install, so it should read as on/off rather than as one more optional
      detail in a list of fields. */
   .swrow{display:flex;align-items:flex-start;gap:14px;margin:16px 0 0}
   .swrow .txt{flex:1 1 auto}
-  .swrow .hd{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
+  .swrow .hd{font-size:13.5px;font-weight:650;letter-spacing:-.01em;line-height:1.35}
+  .swrow .hint{margin-top:4px;max-width:56ch}
   .sw{position:relative;flex:0 0 auto;width:46px;height:26px;margin-top:2px;cursor:pointer}
   .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
   .sw .track{position:absolute;inset:0;border-radius:999px;background:var(--panel-2);
@@ -389,8 +398,6 @@
         </div>
         <input type="hidden" name="host_group" id="host_group"
                value="{{ host_group or '' }}">
-        <input type="hidden" name="host_name" id="host_name"
-               value="{{ host_name or '' }}">
         <div class="note" id="hostecho" style="display:none;margin-top:8px"></div>
 
         <button class="btn" type="submit">
@@ -478,9 +485,15 @@
 <div id="hostpick" role="dialog" aria-modal="true" aria-labelledby="hostpick-t">
   <div class="box">
     <div class="bt" id="hostpick-t">{{ t('dialog_choose') }}</div>
-    <label><span>{{ t('host_group') }}</span><select id="hp-group"></select></label>
-    <label><span>{{ t('host_name') }}</span><select id="hp-host"></select></label>
-    <div class="note" id="hp-note" style="margin-top:12px">{{ t('host_group_hint') }}</div>
+    <div class="field" style="margin:14px 0 0">
+      <label for="hp-group">{{ t('host_group') }}</label>
+      {# `class="input"` is the whole point: every control on this page is styled
+         through that class, and a bare <select> here fell back to the browser's
+         own widget -- grey box, system font, no arrow -- which is what made this
+         dialog look like it belonged to another app. #}
+      <select id="hp-group" class="input"></select>
+    </div>
+    <div class="note" id="hp-note">{{ t('host_group_hint') }}</div>
     <div class="acts">
       <button type="button" class="btn ghost" id="hp-cancel">{{ t('dialog_cancel') }}</button>
       <button type="button" class="btn" id="hp-ok">{{ t('dialog_use') }}</button>
@@ -502,9 +515,8 @@ const T = {{ {
   'unlock_confirm': t('unlock_confirm'),
   'grid_seeded': t('grid_seeded'), 'grid_new': t('grid_new'),
   'grid_unreadable': t('grid_unreadable'),
-  'host_group_hint': t('host_group_hint'), 'no_hosts': t('no_hosts'),
-  'no_groups': t('no_groups'), 'host_chosen': t('host_chosen'),
-  'err_no_host': t('err_no_host'),
+  'host_group_hint': t('host_group_hint'), 'no_groups': t('no_groups'),
+  'host_chosen': t('host_chosen'), 'err_no_host_group': t('err_no_host_group'),
 } | tojson }};
 </script>
 <script>
@@ -836,24 +848,24 @@ const T = {{ {
 </script>
 
 <script>
-/* ---- Operation & Input: the host popup -------------------------------
-   The toggle writes two rows no later edit takes back -- an Operation and an
-   Input row addressed to a host -- so the host is chosen in a dialog that has
-   to be answered. Cancel turns the toggle off rather than leaving a request
-   with no host behind it. The two hidden fields are all the form posts, so the
-   values on them are exactly what the operator saw in here.
-   Group and host lists come from /api/host_groups, which reports the install's
-   own membership: a group with no hosts linked offers nothing, and inventing a
-   fallback list here would put a host on the wire that nobody chose. */
+/* ---- Operation & Input: the host-group popup ---------------------------
+   The switch writes two rows no later edit takes back -- an Operation and an
+   Input row addressed to a host group -- so the target is chosen in a dialog
+   that has to be answered. Cancel stands the offer down rather than leaving a
+   request with nothing behind it, and the hidden field is all the form posts,
+   so what the operator saw in here is what gets written.
+   One dropdown, not two: the Input column accepts a whole group
+   (`[HG]<name>`, verified against this install), which is what "run this on
+   that group" means. The count beside each name is the install's own membership
+   -- a group with no hosts is still selectable, and seeing zero here beats
+   finding out from a run that had nothing to execute against. */
 (function () {
   var toggle = document.getElementById('create_op');
   var pick = document.getElementById('hostpick');
   if (!toggle || !pick) return;
   var gHidden = document.getElementById('host_group');
-  var hHidden = document.getElementById('host_name');
   var echo = document.getElementById('hostecho');
   var gSel = document.getElementById('hp-group');
-  var hSel = document.getElementById('hp-host');
   var note = document.getElementById('hp-note');
   var groups = null, loading = null;
 
@@ -862,36 +874,24 @@ const T = {{ {
     echo.style.display = txt ? 'block' : 'none';
   }
   function sync() {
-    say(toggle.checked && hHidden.value
-        ? T.host_chosen.replace('@@', hHidden.value) : '');
+    // split/join, not replace: replace() with a string fills only the first `@@`,
+    // and an echo that leaks the placeholder spells the value wrong on screen
+    var v = toggle.checked ? gHidden.value : '';
+    say(v ? T.host_chosen.split('@@').join(v) : '');
   }
-  function current() {
-    var n = gSel.value;
-    return (groups || []).filter(function (g) { return g.name === n; })[0] || null;
-  }
-  function fillHosts(keep) {
-    var g = current();
-    hSel.innerHTML = '';
-    var list = (g && g.hosts) || [];
-    list.forEach(function (h) {
-      var o = document.createElement('option');
-      o.value = h; o.textContent = h; hSel.appendChild(o);
-    });
-    if (keep && list.indexOf(keep) >= 0) hSel.value = keep;
-    note.textContent = list.length ? T.host_group_hint
-      : T.no_hosts.replace('@@', g ? g.name : '');
-  }
-  function fillGroups() {
+  function draw() {
     gSel.innerHTML = '';
     (groups || []).forEach(function (g) {
       var o = document.createElement('option');
-      o.value = g.name; o.textContent = g.name; gSel.appendChild(o);
+      o.value = g.name;
+      o.textContent = g.name + ' (' + ((g.hosts && g.hosts.length) || 0) + ')';
+      gSel.appendChild(o);
     });
     if (!(groups || []).length) { note.textContent = T.no_groups; return; }
     var want = gHidden.value;
     gSel.value = (groups || []).some(function (g) { return g.name === want; })
       ? want : groups[0].name;
-    fillHosts(hHidden.value);
+    note.textContent = T.host_group_hint;
   }
   function open() {
     pick.classList.add('on');
@@ -901,10 +901,10 @@ const T = {{ {
     }).then(function (res) {
       loading = null;
       groups = res.ok ? (res.body.groups || []) : [];
-      fillGroups();
+      draw();
     }).catch(function (err) {
       loading = null; groups = [];
-      fillGroups();
+      draw();
       note.textContent = String(err);      // the transport's words, not ours
     });
   }
@@ -912,24 +912,24 @@ const T = {{ {
 
   toggle.addEventListener('change', function () {
     if (toggle.checked) { open(); return; }
-    gHidden.value = ''; hHidden.value = ''; sync();
+    gHidden.value = ''; sync();            // off means off, fields and all
   });
   echo.addEventListener('click', function () { if (toggle.checked) open(); });
-  gSel.addEventListener('change', function () { fillHosts(''); });
+  gSel.addEventListener('change', function () { note.textContent = T.host_group_hint; });
   document.getElementById('hp-ok').addEventListener('click', function () {
-    var g = current(), h = hSel.value;
-    if (!h) {
-      // No host, no agreement: the dialog stays open rather than writing a run
-      // that ITA would refuse with a message naming nothing useful.
-      note.textContent = T.err_no_host.replace('@@', g ? g.name : '');
+    var g = gSel.value;
+    if (!g) {
+      // No group, no agreement: the dialog stays open rather than posting a run
+      // ITA would refuse with a message naming nothing useful.
+      note.textContent = T.err_no_host_group;
       return;
     }
-    gHidden.value = g ? g.name : ''; hHidden.value = h;
+    gHidden.value = g;
     close(); sync();
   });
   document.getElementById('hp-cancel').addEventListener('click', function () {
     toggle.checked = false;
-    gHidden.value = ''; hHidden.value = '';
+    gHidden.value = '';
     close(); sync();
   });
   sync();

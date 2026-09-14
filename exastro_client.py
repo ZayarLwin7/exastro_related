@@ -1703,6 +1703,17 @@ class ExastroClient:
         return f"{cfg.HOST_VALUE_PREFIX}{host}"
 
     @staticmethod
+    def group_value(group: str) -> str:
+        """The spelling the input column wants for a whole group: `[HG]<name>`.
+
+        Both forms were written to this install and read back: `[H]localhost` and
+        `[HG]<group>` are accepted, `[H]no_such_host` is refused. The UI offers
+        only the group, because that is what "run this on that group" means;
+        `host_value` stays for the day a per-host run is asked for.
+        """
+        return f"{cfg.HOST_GROUP_PREFIX}{group}"
+
+    @staticmethod
     def _select_label(scheduled: str, operation_name: str) -> str:
         """The `operation_name_select` item for a stored schedule.
 

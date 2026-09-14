@@ -548,7 +548,8 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
                       wait_vars: bool = True, cl=None,
                       column_meta: dict | None = None,
                       replace_flags: bool = False,
-                      create_op: bool = False, host_name: str = "") -> dict:
+                      create_op: bool = False, run_target: str = "",
+                      host_label: str = "") -> dict:
     """Run the full creation sequence. Returns a step-by-step report.
 
     Errors are caught *per step* so one failure doesn't mask what already
@@ -556,7 +557,8 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
     binding is visible instead of looking like success.
 
     With `create_op`, the run also creates the Conductor Operation and one Input
-    row for the movement, addressed to `host_name` as `[H]<host>`. Both are off by
+    row for the movement, addressed to `run_target` -- `[HG]<group>` today. Both
+    are off by
     default and deliberately last: an Operation is a real scheduled thing, and a
     run that made one nobody asked for cannot be undone quietly.
 
@@ -638,10 +640,12 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
              _operation, {"name": movement_name})
         if made.get("op"):
             op = made["op"]
-            step("input", f"Create Input row on host '{host_name}'",
+            step("input", f"Create Input row on host '{run_target}'",
                  lambda: cl.create_movement_input(movement_name, params, op,
-                                                  host_name),
-                 {"name": host_name})
+                                                  run_target),
+                 # the report names the group, not the column's spelling of it:
+                 # `[HG]X` is what ITA stores, `X` is what the operator chose
+                 {"name": host_label or run_target})
 
     return {"status": status, "steps": steps, "bindings": bindings,
             "linked": linked, "total": len(bindings)}
@@ -731,7 +735,6 @@ def create():
     # row itself, and a second pair would be a duplicate run of the same work.
     create_op = request.form.get("create_op") == "1"
     host_group = (request.form.get("host_group") or "").strip()
-    host_name = (request.form.get("host_name") or "").strip()
 
     # --- validate ---
     # Messages are rendered in the interface language the operator chose, not
@@ -754,21 +757,19 @@ def create():
         errors.append(str(exc))
         params = {}
     if create_op:
-        # Checked against the group's own links before anything is written,
-        # because ITA's answer to a host outside the group is a bare "invalid
-        # value" naming nothing that tells the operator what went wrong.
+        # The group is checked against the install's own list before anything is
+        # written: ITA's answer to a name it does not have is a bare "invalid
+        # value" that tells the operator nothing about what to fix.
         if not host_group:
             errors.append(i18n.t("err_no_host_group", lang))
-        elif not host_name:
-            errors.append(i18n.t("err_no_host", lang, name=host_group))
         else:
             try:
-                offered = client.hosts_in_group(host_group)
+                offered = [g["name"] for g in client.host_groups()]
             except ExastroError as exc:
                 offered = []
                 errors.append(str(exc))
-            if host_name not in offered:
-                errors.append(i18n.t("err_host_offered", lang, name=host_name))
+            if host_group not in offered:
+                errors.append(i18n.t("err_group_offered", lang, name=host_group))
 
     # The grid is generated from these keys, so it is validated against them:
     # a row whose key has since been deleted from the JSON would otherwise be
@@ -797,7 +798,7 @@ def create():
                                sheet_name=sheet_name, parameters=params_raw,
                                column_meta=meta_raw,
                                replace_flags=replace_flags, create_op=create_op,
-                               host_group=host_group, host_name=host_name), 400
+                               host_group=host_group), 400
 
     # Bind the client once for the whole request. A Settings save can replace
     # the module-level client while this is running; this run keeps its target.
@@ -812,8 +813,9 @@ def create():
                                create_op=create_op,
                                # spelled the way ITA's input column wants it,
                                # in one place: the client owns that format
-                               host_name=cl.host_value(host_name) if create_op
-                               else "")
+                               run_target=cl.group_value(host_group)
+                               if create_op else "",
+                               host_label=host_group)
     types = infer_types(params)
     # Store the whole run, not just its status, so /creation/<id> can replay it
     # later — the Exastro objects may change or be deleted in between.

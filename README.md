@@ -452,9 +452,13 @@ lock token echoed back unchanged — instead of adding a second one.
 
 ## Operation and Input — the optional last two rows
 
-Off by default. Ticking **Create Operation and Input data** opens a dialog that asks
-where the run should execute — Host Group, then a host inside it — and the run then
-writes two more rows after the parameter work:
+Off by default. Switching **Create Operation and Input data** on opens a dialog with
+one question — which host group — and the run then writes two more rows after the
+parameter work. The group is the whole choice: the Input row is addressed to
+`[HG]<group>`, so the movement executes on every host linked into it. A count beside
+each name is that group's own membership, read from the install; a group listed with
+`(0)` can still be chosen, which is better seen here than inferred from a run that
+had nothing to execute against:
 
 ```
 POST .../menu/operation_list/maintenance/
@@ -462,7 +466,7 @@ POST .../menu/operation_list/maintenance/
       "scheduled_date_for_execution": "<today> <now as hh:mm:ss>", "remarks": ""}
 POST .../menu/<movement>/maintenance/
      {<the JSON values as typed>, "operation_name_select": "<label>",
-      "host_name": "[H]<host>"}
+      "host_name": "[HG]<group>"}
 ```
 
 Every rule below was measured against this install, rows created and discarded
@@ -474,7 +478,7 @@ again; the example payloads in circulation are wrong about two of them.
 | Schedule **written** | `YYYY/MM/DD hh:mm:ss`. Dashes are refused: `The value format (YYYY/MM/DD hh:mm:ss) is invalid.( input value: 2026-09-14 09:06)` |
 | Schedule **read back** | `YYYY-MM-DD HH:MM:SS` — the same value, reformatted |
 | `operation_name_select` | the read-back value **to the minute**, then `_`, then the name: `2026-09-14 09:07_DemoFlow20260914090728`. With seconds it is refused as an invalid value, so the label is derived from what was read back, never from what was sent. |
-| `host_name` | `[H]<host>` for one host, `[HG]<group>` for the whole group — both accepted; `[H]no_such_host` is refused |
+| `host_name` | the column is called *host* but takes a group: `[HG]<group>` for the whole group, `[H]<host>` for one host — both accepted, `[H]no_such_host` refused. The UI writes the group form; `host_value()` is kept for a per-host run. |
 | Row identity | operations are keyed by `operation_id`, input rows by `uuid`. `DELETE` is not offered; a row is discarded by PATCHing it back with `discard: "1"` and its `last_update_date_time` echoed. |
 
 Two decisions worth stating:
@@ -483,11 +487,11 @@ Two decisions worth stating:
   a *Parameter Sheet (Host/Operation)* — which is why `host_name` and
   `operation_name_select` exist there and not in `create/define`, whose column list
   holds only the role variables.
-* **Membership is checked before writing.** `host_link_list` is the group's host
-  list, and the popup offers only those. ITA's own refusal for a host outside the
-  group is a bare `The input value is an invalid value.(input value:[H]x)` naming
-  nothing about groups, so a run that got that far was already misreading the
-  install.
+* **The group is checked before writing.** `hostgroup_management` is the install's
+  own list and `host_link_list` its membership, and the run refuses to start with a
+  group that is not in the first. ITA's refusal for a name it does not have is a bare
+  `The input value is an invalid value.(input value:[HG]x)` naming nothing the
+  operator could act on.
 
 The toggle stays off when another system drives this tool — ServiceNow creates the
 operation and the input row itself (its rows carry `remarks: "ServiceNow"`), and a

@@ -81,6 +81,7 @@ OPERATION_MENU = os.getenv("EXA_OPERATION_MENU", "operation_list")
 HOSTGROUP_MENU = os.getenv("EXA_HOSTGROUP_MENU", "hostgroup_management")
 HOST_LINK_MENU = os.getenv("EXA_HOST_LINK_MENU", "host_link_list")
 HOST_VALUE_PREFIX = os.getenv("EXA_HOST_VALUE_PREFIX", "[H]")
+HOST_GROUP_PREFIX = os.getenv("EXA_HOST_GROUP_PREFIX", "[HG]")
 
 # --- Defaults when a row is created ------------------------------------------
 # Orchestrator value recorded on the movement (fixed for Ansible-LegacyRole).

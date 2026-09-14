@@ -3821,12 +3821,15 @@ def test_the_operation_is_created_between_the_bindings_and_the_input_row(tmpdb):
     order, made = [], {}
     rep = appmod.create_everything("m", "p:r", "s", {"a": "1"}, "env", False,
                                    cl=_op_recorder(order, made),
-                                   create_op=True, host_name="[H]demo_host_a")
+                                   create_op=True, run_target="[HG]DEMO_GROUP",
+                                   host_label="DEMO_GROUP")
     assert order == ["movement", "role_link", "param_sheet", "param_link",
                      "operation", "input"], order
     assert [st["key"] for st in rep["steps"]][-2:] == ["operation", "input"]
-    assert made["host"] == "[H]demo_host_a"
+    assert made["host"] == "[HG]DEMO_GROUP"
     assert made["params"] == {"a": "1"}, "the input row carries the run's values"
+    # and the report says what the operator chose, not how ITA spells it
+    assert rep["steps"][-1]["args"]["name"] == "DEMO_GROUP", rep["steps"][-1]
     assert rep["status"] == "OK", rep
 
 
@@ -3839,7 +3842,7 @@ def test_an_input_row_is_never_written_without_an_operation(tmpdb):
     cl.create_operation = lambda *a, **kw: (_ for _ in ()).throw(
         ExastroError("operation_list refused"))
     rep = appmod.create_everything("m", "p:r", "s", {"a": "1"}, "env", False,
-                                   cl=cl, create_op=True, host_name="[H]h")
+                                   cl=cl, create_op=True, run_target="[HG]G")
     assert order == ["movement", "role_link", "param_sheet", "param_link"], order
     keys = [st["key"] for st in rep["steps"]]
     assert "input" not in keys, keys
@@ -3860,33 +3863,38 @@ def test_the_toggle_off_writes_neither_row(mock_client, tmpdb):
     assert "operation" not in [st["key"] for st in report["steps"]], report
 
 
-def test_a_host_outside_the_group_stops_the_run_before_anything_is_written(
+def test_a_group_the_install_does_not_have_stops_the_run_before_anything_is_written(
         mock_client, tmpdb):
+    """A name ITA has never heard of is refused with a message that names nothing
+    the operator can act on, so the install's own group list is checked first."""
     resp = mock_client.post("/create", data={
         "movement_name": "demo_bad", "role_package": "demo_pkg",
         "role_select": "DEMO_HOST_JOB", "exec_env": "DEMO_EXEC_ENV",
         "parameters": '{"p_jobname": "J"}', "create_op": "1",
-        "host_group": "DEMO_GROUP", "host_name": "not_in_the_group"})
+        "host_group": "NO_SUCH_GROUP"})
     assert resp.status_code == 400
-    page = resp.get_data(as_text=True)
-    assert "is not a host in the group" in page
+    assert "is not a host group on this workspace" in resp.get_data(as_text=True)
     assert appmod.count_creations() == 0, "nothing was created"
 
 
-def test_a_group_and_no_host_is_not_a_run(mock_client, tmpdb):
-    resp = mock_client.post("/create", data={
-        "movement_name": "demo_nohost", "role_package": "demo_pkg",
-        "role_select": "DEMO_HOST_JOB", "exec_env": "DEMO_EXEC_ENV",
-        "parameters": '{"p_jobname": "J"}', "create_op": "1",
-        "host_group": "DEMO_GROUP", "host_name": ""})
-    assert resp.status_code == 400
-    assert "Choose a host in" in resp.get_data(as_text=True)
+def test_an_empty_group_is_not_a_run(mock_client, tmpdb):
+    """The dialog cannot be dismissed into a half-answer: a switch on with no
+    group behind it would write an Input row addressed to nothing."""
+    for missing in ("", "   "):
+        resp = mock_client.post("/create", data={
+            "movement_name": "demo_none", "role_package": "demo_pkg",
+            "role_select": "DEMO_HOST_JOB", "exec_env": "DEMO_EXEC_ENV",
+            "parameters": '{"p_jobname": "J"}', "create_op": "1",
+            "host_group": missing})
+        assert resp.status_code == 400, missing
+        assert "Choose a host group" in resp.get_data(as_text=True)
+    assert appmod.count_creations() == 0
 
 
-def test_the_chosen_host_is_spelled_for_ita_once(mock_client, tmpdb):
+def test_the_chosen_group_is_spelled_for_ita_once(mock_client, tmpdb):
     """The route hands the run a value ITA's column wants, built by the client
     that owns that format, so no second place in the code has to know about
-    `[H]`."""
+    `[HG]` -- and the report keeps the plain name the operator picked."""
     seen = {}
     real = appmod.create_everything
 
@@ -3901,12 +3909,12 @@ def test_the_chosen_host_is_spelled_for_ita_once(mock_client, tmpdb):
             "movement_name": "demo_spell", "role_package": "demo_pkg",
             "role_select": "DEMO_HOST_JOB", "exec_env": "DEMO_EXEC_ENV",
             "parameters": '{"p_jobname": "J"}', "create_op": "1",
-            "host_group": "DEMO_GROUP", "host_name": "demo_host_a"},
-            follow_redirects=True)
+            "host_group": "DEMO_GROUP"}, follow_redirects=True)
     finally:
         appmod.create_everything = monkey
     assert seen["create_op"] is True
-    assert seen["host_name"] == "[H]demo_host_a", seen
+    assert seen["run_target"] == "[HG]DEMO_GROUP", seen
+    assert seen["host_label"] == "DEMO_GROUP", "the report names the group itself"
 
 
 def test_the_host_endpoint_answers_with_groups_and_their_hosts(mock_client):
@@ -3916,25 +3924,46 @@ def test_the_host_endpoint_answers_with_groups_and_their_hosts(mock_client):
     assert [g["name"] for g in body["groups"]] == ["DEMO_GROUP", "DEMO_GROUP_ZOS"]
 
 
-def test_the_page_offers_the_toggle_and_the_host_dialog(mock_client):
+def test_the_page_offers_the_toggle_and_one_group_dropdown(mock_client):
+    """One dropdown, not two. The operator asked for the Host list back out: the
+    Input column takes a whole group, so a second choice only offered a way to
+    name something other than what the run is addressed to."""
     page = mock_client.get("/").get_data(as_text=True)
     for marker in ('name="create_op"', 'id="hostpick"', 'id="hp-group"',
-                   'id="hp-host"', 'name="host_group"', 'name="host_name"'):
+                   'name="host_group"'):
         assert marker in page, marker
+    assert 'id="hp-host"' not in page, "the host dropdown came back out"
+    assert 'name="host_name"' not in page, "and nothing posts a host either"
     # the toggle's hint has to say when it should stay off, or the operator
     # cannot tell this apart from a box that is simply unchecked by accident
     assert "ServiceNow" in page
 
 
+def test_the_dialogs_controls_are_the_pages_controls(mock_client):
+    """The popup looked like it belonged to another app because its <select> had
+    no `class="input"`: every control on this page is styled through that class,
+    and a bare one falls back to the browser widget -- grey box, system font, no
+    arrow. Same for the buttons: the page's `.btn` is a full-width submit, which
+    inside a dialog reads as a slab."""
+    page = mock_client.get("/").get_data(as_text=True)
+    box = page[page.index('<div id="hostpick"'):page.index("</script>")]
+    assert '<select id="hp-group" class="input">' in box, box[:600]
+    css = page[:page.index("</style>")]
+    assert "#hostpick .btn{width:auto;margin:0" in css, css
+    assert "max-width:330px" in css.replace(" ", ""), "a dialog box, not a panel"
+    # the hint had no rule of its own, so a standalone one inherited the body size
+    assert ".hint{font-size:11.5px" in css.replace(" ", "")
+
+
 def test_cancelling_the_dialog_turns_the_toggle_off():
     """The cancel button means "do not create these", not "create them with no
-    host": ITA would refuse the latter with a message that names nothing."""
+    group": ITA would refuse the latter with a message that names nothing."""
     import pathlib
     js = pathlib.Path("templates/index.html").read_text(encoding="utf-8")
     handler = js[js.index("'hp-cancel'"):]
     handler = handler[:handler.index("</script>")]
     assert "toggle.checked = false" in handler, handler
-    assert "gHidden.value = ''" in handler and "hHidden.value = ''" in handler
+    assert "gHidden.value = ''" in handler, handler
     # and it closes the dialog, or "cancel" leaves the thing it cancelled open
     assert "close()" in handler
 
@@ -3945,8 +3974,9 @@ def test_the_host_dialog_is_not_pinned_closed_by_an_inline_style(mock_client):
     nothing appeared. The hidden state belongs in the stylesheet, where the
     class that shows the dialog can reach it."""
     page = mock_client.get("/").get_data(as_text=True)
-    tag = page[page.index('<div id="hostpick"'):page.index("hp-group")]
-    assert "style=" not in tag, tag[:200]
+    opening = page[page.index('<div id="hostpick"'):]
+    opening = opening[:opening.index(">") + 1]
+    assert "style=" not in opening, opening
     css = page[:page.index("</style>")]
     assert "#hostpick{" in css and "display:none" in css
     assert "#hostpick.on{display:flex}" in css.replace(" ", "") or \
@@ -4003,11 +4033,12 @@ def _popup_script(mock_client, tmpdb):
 def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
     """Runs the shipped popup logic and checks what the form would post.
 
-    Both bugs this guards are ones a text assertion cannot see: the dialog carried
+    Three things this catches that reading the template cannot: a dialog carrying
     an inline `display:none` that the `.on` class could not override, so it opened
-    into nothing; and a cancel has to stand the whole offer down, not just hide the
-    box. Neither is discoverable by reading the template, and both were only
-    noticed because a person clicked it.
+    into nothing; a cancel that has to stand the whole offer down rather than just
+    hide the box; and an echo built with `replace('@@', v)`, which fills only the
+    first placeholder and left `[HG]@@` on screen. All three were found by a person
+    looking at the page — which is the reason this file exists.
     """
     decl, body = _popup_script(mock_client, tmpdb)
     harness = (ROOT / "tests" / "popup_model.mjs").read_text(encoding="utf-8")
@@ -4022,12 +4053,13 @@ def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
     finally:
         os.unlink(path)
     assert done.returncode == 0, done.stdout[-2500:] + done.stderr[-2500:]
-    for case in ("the switch opens the dialog",
-                 "groups are listed as the install reports them",
-                 "a group with no hosts offers none and says so",
-                 "confirming posts the group and the host and closes",
-                 "confirming with no host keeps the dialog open",
+    for case in ("the switch opens the dialog and asks the install",
+                 "each group is labelled with its own host count",
+                 "the note says the run goes to every host in the group",
+                 "confirming posts the group and echoes the value ITA will store",
+                 "confirming with no group keeps the dialog open and says why",
                  "cancel turns the switch off and clears the choice",
-                 "switching off clears the posted fields",
+                 "switching off clears the posted field",
+                 "no groups on the install is said out loud",
                  "the popup reads the install once and reopens from memory"):
         assert f"OK {case}" in done.stdout, f"{case} did not run:\n{done.stdout}"
