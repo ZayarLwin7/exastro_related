@@ -1,0 +1,30 @@
+#!/bin/sh
+# Identifier sweep before anything is committed.
+#
+# The deny list is local and git-ignored on purpose: it enumerates the names that
+# must not be published, so committing it would itself be the leak. When it is
+# missing, the hook says so out loud instead of passing quietly -- the last two
+# leaks both happened because a check that found nothing was trusted to have run.
+#
+#   git config core.hooksPath tools/hooks
+#
+list=.scrub-denylist
+py=""
+for c in "$VIRTUAL_ENV/bin/python" python3 ../.venv/bin/python python; do
+    if [ -n "$c" ] && command -v "$c" >/dev/null 2>&1; then py="$c"; break; fi
+done
+if [ -z "$py" ]; then
+    # No interpreter means no sweep, and a sweep that cannot run is not a pass.
+    echo "pre-commit: REFUSED. No Python interpreter found, so names were not checked." >&2
+    exit 1
+fi
+if [ ! -f "$list" ]; then
+    echo "pre-commit: no $list -- identifier sweep SKIPPED." >&2
+    echo "pre-commit: regenerate it from the platform inventory before pushing." >&2
+    exit 0
+fi
+if ! "$py" tools/scrub_check.py "$list"; then
+    echo "pre-commit: REFUSED. Genericise the names listed above, then commit again." >&2
+    exit 1
+fi
+exit 0
