@@ -18,13 +18,21 @@ if [ -z "$py" ]; then
     echo "pre-commit: REFUSED. No Python interpreter found, so names were not checked." >&2
     exit 1
 fi
-if [ ! -f "$list" ]; then
+status=0
+if [ -f "$list" ]; then
+    "$py" tools/scrub_check.py "$list" || status=1
+else
     echo "pre-commit: no $list -- identifier sweep SKIPPED." >&2
     echo "pre-commit: regenerate it from the platform inventory before pushing." >&2
-    exit 0
 fi
-if ! "$py" tools/scrub_check.py "$list"; then
-    echo "pre-commit: REFUSED. Genericise the names listed above, then commit again." >&2
+# The .ico is generated, not drawn by hand, so it is checked against its own
+# generator: a committed binary nobody can diff is how an icon ends up disagreeing
+# with the app bar it is supposed to echo.
+if [ -f tools/make_favicon.py ]; then
+    "$py" tools/make_favicon.py --check || status=1
+fi
+if [ "$status" -ne 0 ]; then
+    echo "pre-commit: REFUSED. Fix what is listed above, then commit again." >&2
     exit 1
 fi
 exit 0

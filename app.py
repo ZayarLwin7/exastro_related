@@ -843,6 +843,14 @@ def healthz():
             "gateway": cfg.GATEWAY_URL, "workspace": cfg.WORKSPACE_ID}
 
 
+@app.get("/favicon.ico")
+def favicon():
+    """Every page links the icon, so a browser should not ask here -- but some
+    still do, and a 404 in the log of a tool nobody reads is how a real fault
+    hides. Serve the file that is already on disk."""
+    return app.send_static_file("favicon.ico")
+
+
 @app.get("/creation/<int:creation_id>")
 def creation_detail(creation_id: int):
     """Full history of one run: every step, every parameter binding, as it happened."""

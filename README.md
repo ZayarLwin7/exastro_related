@@ -114,6 +114,17 @@ the grantee is by construction someone who exists.
 
 ## Appearance
 
+The tab icon is the app's own mark: `static/favicon.svg` carries the same glyph the
+app bar draws, on the same accent gradient, and `static/favicon.ico` (16, 32, 48 px)
+is generated from that geometry by `tools/make_favicon.py` for browsers that want a
+raster file. Both are local, so a closed network still gets an icon. To put the
+platform vendor's official logo in instead: it is deliberately not committed here
+(a public repository is not where somebody else's trademark gets dropped as a
+courtesy), so place your own copy over `static/favicon.svg`, run
+`python3 tools/make_favicon.py` if you add a PNG or SVG of it, and every page picks
+it up. The pre-commit hook runs the generator in `--check` mode, so the committed
+`.ico` cannot silently fall behind the source.
+
 `static/theme.css` is the one palette; every page links it and keeps only its
 own layout rules. A **sun/moon switch** in the header flips between the two, and
 the choice is remembered per browser session:

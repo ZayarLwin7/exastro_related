@@ -4079,3 +4079,109 @@ def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
                  "no groups on the install is said out loud",
                  "the popup reads the install once and reopens from memory"):
         assert f"OK {case}" in done.stdout, f"{case} did not run:\n{done.stdout}"
+
+
+# ---------------------------------------------------------------------------
+# the tab icon
+# ---------------------------------------------------------------------------
+
+def _ico_entries(path):
+    """Parse an ICO into {size: rgba_rows}. Written here rather than imported
+    from the generator, so a bug in one cannot sign off on the other."""
+    import struct
+    import zlib
+    data = path.read_bytes()
+    reserved, kind, count = struct.unpack("<HHH", data[:6])
+    assert reserved == 0 and kind == 1, "not an icon container"
+    out = {}
+    for i in range(count):
+        w, h, _, _, planes, bpp, size, off = struct.unpack(
+            "<BBBBHHII", data[6 + 16 * i:6 + 16 * i + 16])
+        blob = data[off:off + size]
+        assert blob[:8] == b"\x89PNG\r\n\x1a\n", "entry is not a PNG"
+        iw, ih = struct.unpack(">II", blob[16:24])
+        pos, idat = 33, b""
+        while pos < len(blob) - 12:
+            ln = struct.unpack(">I", blob[pos:pos + 4])[0]
+            if blob[pos + 4:pos + 8] == b"IDAT":
+                idat += blob[pos + 8:pos + 8 + ln]
+            pos += 12 + ln
+        raw = zlib.decompress(idat)
+        stride = iw * 4 + 1
+        rows = [[tuple(raw[y * stride + 1 + x * 4:y * stride + 1 + x * 4 + 4])
+                 for x in range(iw)] for y in range(ih)]
+        assert (w or 256) == iw and planes == 1 and bpp == 32
+        out[iw] = rows
+    return out
+
+
+def test_every_page_links_the_icon_it_serves():
+    """A page with no icon link is a page that 404s on /favicon.ico, and the
+    tab shows a generic sheet of paper: the reason this exists at all."""
+    import glob
+    files = sorted(glob.glob(str(ROOT / "templates" / "*.html")))
+    assert files, "no templates found to check"
+    for f in files:
+        head = pathlib.Path(f).read_text(encoding="utf-8")[:1200]
+        assert 'rel="icon" type="image/svg+xml"' in head, f
+        assert 'rel="alternate icon"' in head, f
+        assert '<link rel="icon"' in head.split('<link rel="stylesheet"')[0], \
+            f"{f}: the icon must be declared with the stylesheet, not after it"
+
+
+def test_the_icon_is_the_apps_own_mark_not_the_vendors():
+    """The tab shows the same glyph as the app bar. It is not the platform
+    vendor's logo, and that is a decision, not an oversight: this repository is
+    public, and shipping somebody else's trademark as a courtesy is not this
+    tool's call to make. static/favicon.svg says how to put the real asset in."""
+    import xml.etree.ElementTree as ET
+    svg = (ROOT / "static" / "favicon.svg").read_text(encoding="utf-8")
+    ET.fromstring(svg)                    # an icon that fails to parse is a blank tab
+    body = svg.replace("\n", " ")
+    assert "#4f46e5" in body and "#7c3aed" in body, "the theme's accent pair"
+    # the same path the app bar draws, so the two cannot be different glyphs
+    markup = pathlib.Path("templates/index.html").read_text(encoding="utf-8")
+    bar = re.search(r'class="logo">.*?<path d="([^"]+)"', markup, re.S).group(1)
+    assert f'd="{bar}"' in body, "the icon drifted from the app bar's mark"
+    assert "Exastro" in svg, "and it is labelled for whoever inspects it"
+
+
+def test_the_raster_icon_reads_at_tab_size():
+    """The check that earns its keep: at 16px a stroke that straddles a pixel
+    boundary splits into two half-lit rows and reads as grey smudge, which is
+    what the first versions of this file produced -- once with the tile corners
+    filled solid, once with all three bars washed to 55% white, once with the
+    stroke scaled twice. Numbers pass in all three cases. Rows are checked
+    instead."""
+    entries = _ico_entries(ROOT / "static" / "favicon.ico")
+    assert set(entries) == {16, 32, 48}, sorted(entries)
+    for size, rows in entries.items():
+        assert rows[0][0][3] == 0, f"{size}: the rounded corner must be clear"
+        assert rows[0][size // 2][3] > 200, f"{size}: the tile must be painted"
+        bright = [y for y in range(size)
+                  if any(p[3] > 200 and min(p[:3]) > 225 for p in rows[y])]
+        assert len(bright) >= 3, f"{size}px: three bars expected, lit rows {bright}"
+        if size == 16:
+            # one crisp row per bar, not two half rows -- the smudge case
+            assert len(bright) == 3, f"bars must snap to whole pixels: {bright}"
+            widest = max(sum(1 for p in rows[y] if min(p[:3]) > 225) for y in bright)
+            shortest = min(sum(1 for p in rows[y] if min(p[:3]) > 225) for y in bright)
+            assert shortest * 1.5 < widest, "the third bar has to stay short"
+
+
+def test_the_raster_icon_is_not_stale():
+    """`static/favicon.svg` is the source of truth for the mark and the .ico is
+    generated from the same geometry; a committed binary nobody can diff is how
+    an icon ends up not matching the app bar it is supposed to echo."""
+    done = subprocess.run([sys.executable, str(ROOT / "tools" / "make_favicon.py"),
+                           "--check"], capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_icon_files_are_served(mock_client):
+    resp = mock_client.get("/favicon.ico")
+    assert resp.status_code == 200
+    assert "icon" in resp.content_type, resp.content_type
+    assert len(resp.get_data()) > 1000
+    svg = mock_client.get("/static/favicon.svg")
+    assert svg.status_code == 200 and "svg+xml" in svg.content_type

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Exastro Automate">
+  <!--
+    The app's own mark, the same glyph the app bar draws at the top of every
+    page, so the tab, the header and the page people compare are one drawing.
+
+    It is deliberately NOT the platform vendor's logo. This repository is
+    public, and a trademarked corporate mark is not this tool's to ship as a
+    courtesy. If you hold the rights and want the official asset here, put it
+    over this file under the same name, run tools/make_favicon.py for the raster
+    sizes, or change the two icon links in the templates.
+
+    The gradient is the light theme's accent pair from static/theme.css:
+    #4f46e5 into #7c3aed. The dark theme's brighter pair would sit too loudly
+    against a light tab strip.
+
+    The stroke is the app bar's 2.2 here. The generated .ico carries a heavier
+    one and snaps each bar to a whole pixel, because at 16px this stroke is one
+    and a half pixels wide and reads as grey smudge.
+
+    No double hyphens anywhere in this comment. XML forbids them inside a
+    comment, and a favicon that does not parse is just a blank tab, which is the
+    thing this file exists to prevent.
+  -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <g transform="translate(12 12) scale(1.66667)" fill="none" stroke="#fff"
+     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h16M4 12h16M4 17h10"/>
+  </g>
+</svg>
