@@ -113,13 +113,13 @@ TEXT: dict[str, dict[str, str]] = {
     # ---- Operation and Input ----------------------------------------------
     "op_input_label": {"en": "Create Operation and Input data",
                        "ja": "オペレーションと入力データを作成"},
-    "op_input_hint": {"en": "Adds an Operation named after the movement plus the "
-                            "execution time, and one Input row on the host you "
-                            "choose. Leave off when something else — ServiceNow, "
-                            "for example — creates them.",
-                      "ja": "作業実行名と実行時刻から作ったオペレーションと、選択した"
-                            "ホストへの入力データを追加します。ServiceNow などが作成する"
-                            "場合はオフにしてください。"},
+    "op_input_hint": {"en": "If you run locally, turn this on: the Operation and "
+                            "the Input row are created here. If you run from "
+                            "ServiceNow, ServiceNow creates that part — leave this "
+                            "off.",
+                      "ja": "ローカルで実行する場合はオンにしてください。オペレーションと"
+                            "入力データをこちらで作成します。ServiceNow から実行する場合は "
+                            "ServiceNow が作成するため、オフのままにしてください。"},
     "host_group": {"en": "Host Group", "ja": "ホストグループ"},
     "host_name": {"en": "Host", "ja": "ホスト"},
     "host_group_hint": {"en": "Only hosts linked into that group are offered.",

@@ -180,6 +180,22 @@
   #hostpick .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
   #hostpick .ghost{background:transparent;border:1px solid var(--line);color:var(--mut)}
   #hostecho{cursor:pointer}
+  /* A switch, not a tick box: this one opens a dialog and puts scheduled work on
+     the install, so it should read as on/off rather than as one more optional
+     detail in a list of fields. */
+  .swrow{display:flex;align-items:flex-start;gap:14px;margin:16px 0 0}
+  .swrow .txt{flex:1 1 auto}
+  .swrow .hd{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
+  .sw{position:relative;flex:0 0 auto;width:46px;height:26px;margin-top:2px;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+  .sw .track{position:absolute;inset:0;border-radius:999px;background:var(--panel-2);
+    border:1px solid var(--line);transition:background .18s,border-color .18s}
+  .sw .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
+    background:var(--mut);transition:transform .18s,background .18s;pointer-events:none}
+  .sw input:checked ~ .track{background:rgba(var(--acc-rgb),.28);
+    border-color:rgba(var(--acc-rgb),.55)}
+  .sw input:checked ~ .knob{transform:translateX(20px);background:var(--acc)}
+  .sw input:focus-visible ~ .track{outline:2px solid var(--acc);outline-offset:2px}
 
 </style>
 </head>
@@ -359,12 +375,18 @@
            system (ServiceNow, for example) drives this tool it creates the
            Operation and the Input row itself, and a second pair would be the same
            work run twice. #}
-        <label class="check" style="margin:4px 0 0">
-          <input type="checkbox" name="create_op" id="create_op" value="1"
-                 {% if create_op %}checked{% endif %}>
-          <span>{{ t('op_input_label') }}
-            <span class="hint">{{ t('op_input_hint') }}</span></span>
-        </label>
+        <div class="swrow">
+          <div class="txt">
+            <div class="hd">{{ t('op_input_label') }}</div>
+            <div class="hint" style="margin-top:3px">{{ t('op_input_hint') }}</div>
+          </div>
+          <label class="sw" title="{{ t('op_input_label') }}">
+            <input type="checkbox" name="create_op" id="create_op" value="1"
+                   {% if create_op %}checked{% endif %}
+                   aria-label="{{ t('op_input_label') }}">
+            <span class="track"></span><span class="knob"></span>
+          </label>
+        </div>
         <input type="hidden" name="host_group" id="host_group"
                value="{{ host_group or '' }}">
         <input type="hidden" name="host_name" id="host_name"
@@ -453,7 +475,7 @@
 
 <!-- Host popup. Same rule as the overlay above: it is in the DOM before the
      script that binds it, because an inline script runs the moment it parses. -->
-<div id="hostpick" role="dialog" aria-modal="true" aria-labelledby="hostpick-t" style="display:none">
+<div id="hostpick" role="dialog" aria-modal="true" aria-labelledby="hostpick-t">
   <div class="box">
     <div class="bt" id="hostpick-t">{{ t('dialog_choose') }}</div>
     <label><span>{{ t('host_group') }}</span><select id="hp-group"></select></label>

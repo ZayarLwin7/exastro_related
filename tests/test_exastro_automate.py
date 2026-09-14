@@ -846,7 +846,13 @@ def test_missing_execution_env_is_not_silently_ok(client_for, monkeypatch):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_client(monkeypatch):
+def mock_client(monkeypatch, tmpdb):
+    # `tmpdb` is a dependency, not decoration. Every app-level test below drives
+    # the real routes, and the routes save each run to the history database -- so
+    # without this they wrote 206 mock rows into the operator's own history file
+    # and buried their real runs under twenty pages of "demo". Isolation has to be
+    # structural: a fixture list a test can forget to ask for is a fixture list
+    # that will eventually be forgotten.
     monkeypatch.setattr(cfg, "MOCK", True)
     from exastro_client import MockExastroClient
     monkeypatch.setattr(appmod, "client", MockExastroClient())
@@ -3931,3 +3937,97 @@ def test_cancelling_the_dialog_turns_the_toggle_off():
     assert "gHidden.value = ''" in handler and "hHidden.value = ''" in handler
     # and it closes the dialog, or "cancel" leaves the thing it cancelled open
     assert "close()" in handler
+
+
+def test_the_host_dialog_is_not_pinned_closed_by_an_inline_style(mock_client):
+    """`style="display:none"` on the dialog beats `.on{display:flex}`, because an
+    inline declaration outranks a class: the switch flipped, the fetch ran, and
+    nothing appeared. The hidden state belongs in the stylesheet, where the
+    class that shows the dialog can reach it."""
+    page = mock_client.get("/").get_data(as_text=True)
+    tag = page[page.index('<div id="hostpick"'):page.index("hp-group")]
+    assert "style=" not in tag, tag[:200]
+    css = page[:page.index("</style>")]
+    assert "#hostpick{" in css and "display:none" in css
+    assert "#hostpick.on{display:flex}" in css.replace(" ", "") or \
+        "#hostpick.on{display:flex}" in css, "the showing rule must exist"
+
+
+def test_the_option_is_a_switch_that_still_posts_a_value(mock_client):
+    page = mock_client.get("/").get_data(as_text=True)
+    assert 'class="sw"' in page and 'class="track"' in page and 'class="knob"' in page
+    # a switch is still a checkbox on the wire: unchecked posts nothing, so the
+    # server's `== "1"` test keeps meaning exactly what it says
+    assert 'name="create_op" id="create_op" value="1"' in page
+    assert '<label class="check"' not in page[page.index('name="create_op"') - 400:
+                                          page.index('name="create_op"')]
+
+
+def test_the_hint_says_when_to_leave_it_off_in_both_languages(mock_client):
+    en = mock_client.get("/").get_data(as_text=True)
+    assert "If you run locally" in en and "leave this" in en
+    assert "ServiceNow" in en
+    mock_client.get("/lang/ja")
+    ja = mock_client.get("/").get_data(as_text=True)
+    assert "ローカルで実行する場合はオン" in ja, "the operator's own sentence, in Japanese"
+    assert "If you run locally" not in ja, "one language on screen at a time"
+
+
+def test_a_route_test_cannot_touch_the_real_history_file():
+    """206 mock runs landed in the operator's own history because the fixture that
+    patches the client did not depend on the fixture that redirects the database.
+    Dependency, not documentation: a list a test can forget is a list that gets
+    forgotten."""
+    import inspect
+    src = inspect.getsource(mock_client)
+    assert "tmpdb" in src, src
+    assert 'DB_PATH' in inspect.getsource(tmpdb)
+
+
+def _popup_script(mock_client, tmpdb):
+    """The popup's real code, sliced out of the rendered page like the grid's."""
+    page = mock_client.get("/").get_data(as_text=True)
+    page = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    decl = re.search(r"const T = \{.*?\};", page, re.S)
+    inside = page.index("  var toggle = document.getElementById('create_op');")
+    # the wrapper has to come with it: the body returns early when the elements
+    # are missing, and a bare `return` at module top level is a SyntaxError
+    start = page.rindex("(function () {", 0, inside)
+    end = page.index("\n})();", inside) + len("\n})();")
+    body = page[start:end]
+    assert decl, "the translation map is no longer a single statement"
+    return decl.group(0), body
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="no node to run the popup under")
+def test_the_popup_does_what_the_switch_says(mock_client, tmpdb):
+    """Runs the shipped popup logic and checks what the form would post.
+
+    Both bugs this guards are ones a text assertion cannot see: the dialog carried
+    an inline `display:none` that the `.on` class could not override, so it opened
+    into nothing; and a cancel has to stand the whole offer down, not just hide the
+    box. Neither is discoverable by reading the template, and both were only
+    noticed because a person clicked it.
+    """
+    decl, body = _popup_script(mock_client, tmpdb)
+    harness = (ROOT / "tests" / "popup_model.mjs").read_text(encoding="utf-8")
+    harness = harness.replace("__T_DECL__", decl).replace("__POPUP_BODY__", body)
+    with tempfile.NamedTemporaryFile("w", suffix=".mjs", delete=False,
+                                     encoding="utf-8") as fh:
+        fh.write(harness)
+        path = fh.name
+    try:
+        done = subprocess.run([shutil.which("node"), path], capture_output=True,
+                              text=True, timeout=60)
+    finally:
+        os.unlink(path)
+    assert done.returncode == 0, done.stdout[-2500:] + done.stderr[-2500:]
+    for case in ("the switch opens the dialog",
+                 "groups are listed as the install reports them",
+                 "a group with no hosts offers none and says so",
+                 "confirming posts the group and the host and closes",
+                 "confirming with no host keeps the dialog open",
+                 "cancel turns the switch off and clears the choice",
+                 "switching off clears the posted fields",
+                 "the popup reads the install once and reopens from memory"):
+        assert f"OK {case}" in done.stdout, f"{case} did not run:\n{done.stdout}"
