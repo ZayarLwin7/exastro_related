@@ -1,0 +1,61 @@
+# Exastro Automate -- system service.
+#
+# This file is a template: deploy/install-service.sh fills in the app directory,
+# the interpreter and the run user from wherever the folder actually lives and who
+# owns it, then installs the result as a system unit. That is why the paths below
+# read as tokens instead of guessing at your filesystem.
+#
+# What is deliberately absent, and why:
+#   * No nginx, no Apache, no :80/:443. This listens on its own port and stays
+#     out of the way of whatever the web server on this box already serves.
+#     Serving it under a path like /exastro later is a ProxyPass added to the
+#     existing vhost, made with that vhost open in front of you -- not something
+#     a script should do to somebody else's site.
+#   * No credentials. Those live in settings.db (PIN-protected profiles) or in
+#     the optional EnvironmentFile below; unit files are world-readable.
+#   * One process, on purpose. Applying a profile in /settings rewrites `config`
+#     inside the process that served that request, so a second worker would go on
+#     talking to the old gateway.
+
+[Unit]
+Description=Exastro Automate (legacy-Ansible movement creator)
+Documentation=file://__APP_DIR__/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+Group=__RUN_GROUP__
+WorkingDirectory=__APP_DIR__
+ExecStart=__VENV_PYTHON__ __APP_DIR__/app.py
+
+# The `-` means "use it if it exists": only needed when the environment is
+# configured through variables instead of a saved profile. Keep that file 0600,
+# because EXA_API_TOKEN would go in it.
+EnvironmentFile=-/etc/exastro-automate/env
+
+# The optional Operation step names itself from the machine's clock and writes
+# `scheduled_date_for_execution` as a wall-clock string carrying no zone. So this
+# has to match the zone the *Exastro server's* clock runs on -- not the operator's
+# browser, and not this box's preference. The team works from Yangon, so this is
+# Asia/Yangon; confirm the Exastro host with `date` there and change it here if it
+# disagrees, because a two-and-a-half-hour difference is invisible in the UI and
+# very visible in a Conductor schedule.
+Environment=TZ=Asia/Yangon
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+# Modest hardening that cannot break this app: it writes its SQLite files next to
+# app.py, so ProtectHome stays off and the app directory is named as writable.
+# PrivateTmp is free; NoNewPrivileges is a floor the app never tries to climb.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=__APP_DIR__
+
+[Install]
+WantedBy=multi-user.target

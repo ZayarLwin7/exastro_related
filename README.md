@@ -832,6 +832,54 @@ never returns an unlock is offered — worded to say the run may still be finish
 server-side. It guards **this tab only**: a second window still submits
 independently, and re-running overwrites the first run's role link and bindings.
 
+### Run it as a service (so it does not depend on your laptop)
+
+`deploy/install-service.sh` installs it as a systemd unit: starts at boot, restarts
+if it crashes, logs to the journal, and keeps its own port.
+
+```bash
+cd <where-this-folder-lives>/Exastro_Automate
+./deploy/install-service.sh --dry-run          # read-only: shows every decision
+sudo ./deploy/install-service.sh               # install, enable, start, verify
+sudo ./deploy/install-service.sh --remove      # back out; the app files stay
+```
+
+It listens on **port 9200 only**. It does not touch nginx or Apache, writes no
+vhost, adds no firewall rule and reloads nothing: the box this was written against
+already serves another application on Apache, and an installer for one tool has no
+business deciding where somebody else's site lives. Serving it under a path later
+(`/exastro`) is a `ProxyPass` line in the vhost you already have, made with that
+vhost open in front of you.
+
+Four things the script handles because they are how this app actually breaks:
+
+* **`WorkingDirectory` is required, not ceremony.** `creations.db`, `settings.db`
+  and `flask_secret.key` are opened by relative name, so a unit without it starts
+  cleanly in `/` and then shows an empty history, no profiles and a fresh session
+  key. The same reasoning makes the run user the *owner of the app directory*:
+  a service that cannot write there answers `/healthz` and fails on the first run.
+* **The venv must not be resolved.** `.venv/bin/python` is a symlink to the base
+  interpreter; following it (`readlink -f`) hands the unit a plain `python3` with
+  no Flask in it. A test now imports `flask` through the exact interpreter written
+  into the rendered `ExecStart`.
+* **Port 9200 held by something else stops the install.** The script will stop a
+  previous copy of *this* app — `restart.sh` or `python app.py`, matched by both its
+  command line and its working directory — and refuses to signal anything it cannot
+  identify.
+* **`TZ` is a correctness setting here, not cosmetics.** The optional Operation step
+  takes its name and `scheduled_date_for_execution` from the machine clock and
+  writes a wall-clock string with no zone in it, so the unit's `TZ` must match the
+  **Exastro server's** clock, not the browser's. The default is `Asia/Yangon`;
+  confirm on the ITA host with `date`, and check one created operation before
+  trusting a batch. A two-and-a-half-hour difference is invisible in this UI and
+  very visible in a Conductor schedule.
+
+After installing: `journalctl -u exastro-automate -f` for logs,
+`sudo systemctl restart exastro-automate` to bounce it, and **stop using
+`./restart.sh`** — it would start a second copy that cannot bind the port while
+systemd owns it. Keep `flask_secret.key` stable or the `/settings` PIN has to be
+re-entered after every restart, and put the two `.db` files in your backup set.
+
 ### Tests
 
 ```bash

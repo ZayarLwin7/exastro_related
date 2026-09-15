@@ -4185,3 +4185,98 @@ def test_the_icon_files_are_served(mock_client):
     assert len(resp.get_data()) > 1000
     svg = mock_client.get("/static/favicon.svg")
     assert svg.status_code == 200 and "svg+xml" in svg.content_type
+
+
+# ---------------------------------------------------------------------------
+# the deployable service
+# ---------------------------------------------------------------------------
+
+DEPLOY = ROOT / "deploy"
+INSTALL_SH = DEPLOY / "install-service.sh"
+UNIT_TEMPLATE = DEPLOY / "exastro-automate.service"
+
+
+def _rendered_unit():
+    done = subprocess.run(["bash", str(INSTALL_SH), "--render"],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_the_service_uses_the_projects_own_interpreter():
+    """The first dry run resolved `.venv/bin/python` with `readlink -f`, which
+    follows the link to the base interpreter: the unit would have started a plain
+    python3 with no Flask in it, and a service that dies on import looks from
+    outside like a service that is running."""
+    unit = _rendered_unit()
+    line = [l for l in unit.splitlines() if l.startswith("ExecStart=")][0]
+    exe = line.split("=", 1)[1].split()[0]
+    assert "/.venv/bin/python" in exe, exe
+    assert "/usr/bin/python" not in exe, "the venv must not be resolved away"
+    done = subprocess.run([exe, "-c", "import flask, requests; print('deps ok')"],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0 and "deps ok" in done.stdout, done.stderr[-400:]
+
+
+def test_the_service_promises_the_things_that_bite():
+    """WorkingDirectory, because the run history and profiles are relative paths
+    and a unit without it starts happily beside an empty set of databases; TZ,
+    because the Operation step reads the machine clock; and a writable app
+    directory, because the service user has to be able to write them."""
+    unit = _rendered_unit()
+    assert "WorkingDirectory=" in unit and "WorkingDirectory=/" in unit
+    assert "Environment=TZ=Asia/Yangon" in unit, "the team works from Yangon"
+    assert "ReadWritePaths=" in unit
+    assert "Restart=always" in unit and "User=" in unit
+    # one process: profile switching lives in module state
+    assert "gunicorn" not in unit and "workers" not in unit.lower()
+    for forbidden in ("EXA_API_TOKEN", "EXA_PASSWORD"):
+        assert forbidden not in unit.replace("EXA_API_TOKEN would go in it", ""), \
+            f"{forbidden} does not belong in a world-readable unit file"
+
+
+def test_the_installer_cannot_disturb_the_web_servers_on_the_box():
+    """The operator's note was 'do not impact the existing application', and this
+    box really does serve something else: Apache is active here with its own
+    vhost. So the script may read service state and print advice, but it must not
+    act on another daemon or its configuration."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    executed = [l for l in script.splitlines()
+                if not l.lstrip().startswith("#")
+                and not l.lstrip().startswith("say ")
+                and "printf" not in l]
+    code = "\n".join(executed)
+    for svc in ("apache2", "httpd", "nginx"):
+        assert f"systemctl stop {svc}" not in code
+        assert f"systemctl restart {svc}" not in code
+        assert f"systemctl reload {svc}" not in code
+        assert f"systemctl enable {svc}" not in code
+        assert f"/etc/{svc}" not in code, f"the script must not write into /etc/{svc}"
+    for verb in ("allow", "deny", "delete", "enable", "disable", "reset"):
+        assert f"ufw {verb}" not in code, "firewall changes are advice, printed for a decision"
+    # reading whether a firewall exists is fine; that is how it warns
+    assert "systemctl is-active ufw" in code
+
+
+def test_the_installer_says_what_it_cannot_see_instead_of_guessing():
+    """`ufw status` without root fails, and the first version of this script read
+    that failure as 'inactive' -- a false all-clear about exposure, printed on a
+    machine where ufw is in fact active. An unknown state has to be named."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    assert "ufw status 2>/dev/null | head -1 | grep" not in script
+    assert "cannot tell whether a firewall is active" in script
+    assert "ufw is ACTIVE" in script and "cannot be read without root" in script
+
+
+def test_the_installer_refuses_to_kill_a_process_it_cannot_identify():
+    """Port 9200 being busy has one safe answer (our own previous copy, matched by
+    working directory and command line) and no other. A `kill` on a guess would
+    take down something that is not this app."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'CWD" = "$APP_DIR' in script, "the stray process must be ours by cwd"
+    assert "*app.py*" in script, "and by its command line"
+    after = script[script.index('if [ -n "$OURS" ]'):]
+    assert "refusing to touch it" in after
+    assert "exit 1" in after, "an unidentifiable holder of the port stops the install"
+    # and the only process it may signal is named in the same branch that matched
+    assert "kill -TERM \"$PID\"" in after.split("refusing to touch it")[0]
