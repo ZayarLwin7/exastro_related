@@ -4280,3 +4280,19 @@ def test_the_installer_refuses_to_kill_a_process_it_cannot_identify():
     assert "exit 1" in after, "an unidentifiable holder of the port stops the install"
     # and the only process it may signal is named in the same branch that matched
     assert "kill -TERM \"$PID\"" in after.split("refusing to touch it")[0]
+
+
+def test_the_health_check_polls_instead_of_guessing():
+    """`Type=simple` marks a unit active the instant the process forks, which is
+    before Flask binds the port. The first real installation of this service
+    worked perfectly and my script reported "no answer on port 9200", because one
+    `curl` does not retry a refused connection. A check that can be wrong in the
+    direction of panic is worse than no check."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    region = script[script.index('step "checking"'):script.index('step "next"')]
+    curl = region.index('curl -s')
+    before = region[:curl]
+    assert "for _ in $(seq" in before, "the probe must sit inside a retry loop"
+    assert "sleep" in before, "and wait between attempts"
+    assert "journalctl -u $SERVICE -n 40" in region, "a real failure says where to look"
+    assert "has been wrong before" in region, "it says so in its own words"

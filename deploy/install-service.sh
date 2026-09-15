@@ -230,17 +230,35 @@ for _ in $(seq 1 20); do
     sleep 0.5
 done
 say "  systemctl is-active : ${ACTIVE:-unknown}"
-if HEALTH="$(curl -s --max-time 10 "http://127.0.0.1:$PORT/healthz")"; then
+HEALTH=""
+# Type=simple means systemd calls the unit "active" the moment the process is
+# forked -- before Flask has bound anything. The first real run of this script
+# installed a perfectly healthy service and then printed "no answer on port
+# 9200", because a single curl does not retry a refused connection and the app
+# needs about half a second to come up. Poll the port; one probe proves nothing.
+for _ in $(seq 1 30); do
+    HEALTH="$(curl -s --max-time 3 "http://127.0.0.1:$PORT/healthz" || true)"
+    [ -n "$HEALTH" ] && break
+    sleep 1
+done
+if [ -n "$HEALTH" ]; then
     say "  /healthz            : $HEALTH"
     case "$HEALTH" in
         *'"ok": true'*|*'"ok":true'*) say "  up" ;;
         *) bad "  answered, but not with ok:true -- read the log below" ;;
     esac
 else
-    bad "  no answer on port $PORT -- read the log below"
+    bad "  no answer on port $PORT after 30 seconds -- read the log:"
+    say "     journalctl -u $SERVICE -n 40 --no-pager"
+    say "  (the unit may still be fine: this line has been wrong before)"
 fi
 
 step "next"
+LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
+if [ -n "$LAN" ]; then
+    say "  from your desk   : http://$LAN:$PORT"
+    say "  (that address needs a firewall rule if ufw is active -- see above)"
+fi
 say "  logs     : journalctl -u $SERVICE -f"
 say "  restart  : sudo systemctl restart $SERVICE"
 say "  status   : systemctl status $SERVICE --no-pager"
