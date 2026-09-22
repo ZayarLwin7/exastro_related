@@ -4296,3 +4296,25 @@ def test_the_health_check_polls_instead_of_guessing():
     assert "sleep" in before, "and wait between attempts"
     assert "journalctl -u $SERVICE -n 40" in region, "a real failure says where to look"
     assert "has been wrong before" in region, "it says so in its own words"
+
+def test_the_page_offers_the_conductor_toggle(mock_client):
+    html = mock_client.get("/").get_data(as_text=True)
+    assert 'name="create_conductor"' in html
+    assert 'id="create_conductor"' in html
+
+def test_create_everything_accepts_create_conductor_kwarg():
+    import inspect
+    sig = inspect.signature(appmod.create_everything)
+    assert "create_conductor" in sig.parameters
+
+def test_mock_client_create_conductor_class_returns_ok():
+    cl = MockExastroClient()
+    result = cl.create_conductor_class("TestMvmt", "fake-id-123", "TestMvmt")
+    assert result.startswith("OK:")
+    assert "TestMvmt" in result
+
+def test_conductor_i18n_keys_exist_in_both_locales():
+    for key in ("conductor_label", "conductor_hint", "step_conductor"):
+        assert key in i18n.TEXT, f"missing i18n key: {key}"
+        entry = i18n.TEXT[key]
+        assert "en" in entry and "ja" in entry

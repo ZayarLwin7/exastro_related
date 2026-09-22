@@ -402,6 +402,18 @@
             <span class="track"></span><span class="knob"></span>
           </label>
         </div>
+      <div class="swrow">
+        <div class="txt">
+          <div class="hd">{{ t('conductor_label') }}</div>
+          <div class="hint">{{ t('conductor_hint') }}</div>
+        </div>
+        <label class="sw">
+          <input type="checkbox" name="create_conductor" id="create_conductor" value="1"
+                 aria-label="{{ t('conductor_label') }}">
+          <span class="track"></span>
+          <span class="knob"></span>
+        </label>
+      </div>
         <input type="hidden" name="host_group" id="host_group"
                value="{{ host_group or '' }}">
         <div class="note" id="hostecho" style="display:none;margin-top:8px"></div>

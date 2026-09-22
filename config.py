@@ -83,6 +83,11 @@ HOST_LINK_MENU = os.getenv("EXA_HOST_LINK_MENU", "host_link_list")
 HOST_VALUE_PREFIX = os.getenv("EXA_HOST_VALUE_PREFIX", "[H]")
 HOST_GROUP_PREFIX = os.getenv("EXA_HOST_GROUP_PREFIX", "[HG]")
 
+# --- Conductor -----------------------------------------------------------------
+CONDUCTOR_MENU = os.getenv("EXA_CONDUCTOR_MENU", "conductor_class_edit")
+CONDUCTOR_LIST_MENU = os.getenv("EXA_CONDUCTOR_LIST_MENU", "conductor_class_list")
+CONDUCTOR_EDITOR_VERSION = os.getenv("EXA_CONDUCTOR_EDITOR_VERSION", "2.0.0")
+
 # --- Defaults when a row is created ------------------------------------------
 # Orchestrator value recorded on the movement (fixed for Ansible-LegacyRole).
 # Id 3 in the movement pulldown; the label is resolved from the account's own

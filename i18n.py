@@ -273,6 +273,9 @@ TEXT: dict[str, dict[str, str]] = {
                        "ja": "オペレーション「{name}」を作成"},
     "step_input": {"en": "Create Input row on host group '{name}'",
                    "ja": "ホストグループ「{name}」へ入力データを作成"},
+    "conductor_label": {"en": "Create Conductor", "ja": "コンダクターを作成"},
+    "conductor_hint": {"en": "Creates a Conductor class named after this movement, wired as start → movement → end.", "ja": "このムーブメントと同じ名前のコンダクタークラスを start → movement → end で作成します。"},
+    "step_conductor": {"en": "Create Conductor '{name}'", "ja": "コンダクター '{name}' を作成"},
     "step_param_link": {"en": "Link Movement <-> Parameter ({count} keys)",
                         "ja": "作業実行とパラメータを関連付け（{count} キー）"},
 

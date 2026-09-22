@@ -1731,6 +1731,84 @@ class ExastroClient:
         low = str(message).lower()
         return "duplicat" in low and field.lower() in low
 
+    def create_conductor_class(self, conductor_name, movement_id, movement_name):
+        """Create a Conductor class wired as start -> movement -> end."""
+        payload = {
+            "conductor": {
+                "conductor_name": conductor_name,
+                "grid_snap": True,
+                "movement_white_space": "wrap",
+                "movement_width": "auto",
+                "note": None,
+                "notice_info": {},
+            },
+            "config": {
+                "edgeNumber": 2,
+                "editorVersion": cfg.CONDUCTOR_EDITOR_VERSION,
+                "nodeNumber": 3,
+                "terminalNumber": 4,
+            },
+            "node-1": {
+                "h": 58, "id": "node-1", "type": "start", "w": 198.438,
+                "x": 7355, "y": 7971,
+                "terminal": {
+                    "terminal-1": {
+                        "edge": "line-1", "id": "terminal-1",
+                        "targetNode": "node-3", "type": "out",
+                        "x": 7536, "y": 8000,
+                    }
+                },
+            },
+            "node-2": {
+                "end_type": "6", "h": 58, "id": "node-2", "type": "end",
+                "w": 198.438, "x": 8446.562, "y": 7971,
+                "terminal": {
+                    "terminal-2": {
+                        "edge": "line-2", "id": "terminal-2",
+                        "targetNode": "node-3", "type": "in",
+                        "x": 8464, "y": 8000,
+                    }
+                },
+            },
+            "node-3": {
+                "h": 58, "id": "node-3", "type": "movement",
+                "movement_id": movement_id,
+                "movement_name": movement_name,
+                "operation_id": None,
+                "orchestra_id": cfg.ORCHESTRATOR_ID,
+                "skip_flag": 0, "w": 290.859,
+                "x": 7900, "y": 7921,
+                "terminal": {
+                    "terminal-7": {
+                        "edge": "line-1", "id": "terminal-7",
+                        "targetNode": "node-1", "type": "in",
+                        "x": 7917, "y": 7950,
+                    },
+                    "terminal-8": {
+                        "edge": "line-2", "id": "terminal-8",
+                        "targetNode": "node-2", "type": "out",
+                        "x": 8174, "y": 7950,
+                    },
+                },
+            },
+            "line-1": {
+                "id": "line-1", "type": "edge",
+                "inNode": "node-3", "inTerminal": "terminal-7",
+                "outNode": "node-1", "outTerminal": "terminal-1",
+            },
+            "line-2": {
+                "id": "line-2", "type": "edge",
+                "inNode": "node-2", "inTerminal": "terminal-2",
+                "outNode": "node-3", "outTerminal": "terminal-8",
+            },
+        }
+        url = f"{self._api}/menu/{cfg.CONDUCTOR_MENU}/conductor/class/maintenance/"
+        body = self._request("POST", url, json=payload)
+        result = self._result(body)
+        if not result.startswith("OK"):
+            raise ExastroError(f"Conductor creation failed: {result}")
+        return f"OK: conductor class '{conductor_name}' created"
+
     def create_operation(self, movement_name: str, remarks: str = "",
                          when: "time.struct_time | None" = None) -> dict:
         """Create a Conductor operation and read it back.
@@ -1921,6 +1999,9 @@ class MockExastroClient(ExastroClient):
 
     def hosts_in_group(self, group: str) -> list[str]:  # noqa: D102
         return list(self._HOSTS.get((group or "").strip(), []))
+
+    def create_conductor_class(self, conductor_name, movement_id, movement_name):
+        return f"OK: conductor class '{conductor_name}' created (mock)"
 
     def create_operation(self, movement_name: str, remarks: str = "",
                          when=None) -> dict:  # noqa: D102

@@ -549,7 +549,7 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
                       column_meta: dict | None = None,
                       replace_flags: bool = False,
                       create_op: bool = False, run_target: str = "",
-                      host_label: str = "") -> dict:
+                      host_label: str = "", create_conductor=False) -> dict:
     """Run the full creation sequence. Returns a step-by-step report.
 
     Errors are caught *per step* so one failure doesn't mask what already
@@ -738,6 +738,7 @@ def create():
     # when another system drives this tool it creates the operation and the input
     # row itself, and a second pair would be a duplicate run of the same work.
     create_op = request.form.get("create_op") == "1"
+    create_conductor = request.form.get("create_conductor") == "1"
     host_group = (request.form.get("host_group") or "").strip()
 
     # --- validate ---
