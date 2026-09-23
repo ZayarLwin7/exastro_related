@@ -647,6 +647,21 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
                  # `[HG]X` is what ITA stores, `X` is what the operator chose
                  {"name": host_label or run_target})
 
+    # Conductor class creation is an optional final step.
+    if create_conductor:
+        def _conductor():
+            row = cl._find_movement(movement_name)
+            mid = ""
+            if row:
+                mid = str(row.get("movement_id") or cl._pk(row, cfg.MOVEMENT_MENU) or "")
+            if not mid:
+                raise ExastroError(
+                    f"movement '{movement_name}' was created but its id "
+                    f"is not visible yet -- run again to create the conductor")
+            return cl.create_conductor_class(movement_name, mid, movement_name)
+        step("conductor", f"Create Conductor '{movement_name}'",
+             _conductor, {"name": movement_name})
+
     return {"status": status, "steps": steps, "bindings": bindings,
             "linked": linked, "total": len(bindings)}
 
@@ -820,7 +835,8 @@ def create():
                                # in one place: the client owns that format
                                run_target=cl.group_value(host_group)
                                if create_op else "",
-                               host_label=host_group)
+                               host_label=host_group,
+                               create_conductor=create_conductor)
     types = infer_types(params)
     # Store the whole run, not just its status, so /creation/<id> can replay it
     # later — the Exastro objects may change or be deleted in between.

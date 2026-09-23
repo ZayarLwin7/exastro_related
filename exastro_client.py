@@ -2003,6 +2003,13 @@ class MockExastroClient(ExastroClient):
     def create_conductor_class(self, conductor_name, movement_id, movement_name):
         return f"OK: conductor class '{conductor_name}' created (mock)"
 
+    def _find_movement(self, movement_name: str):
+        """Mock: return a fake row with a movement_id so the conductor step works."""
+        for entry in self._created.get("movement", []):
+            if entry.get("name") == movement_name:
+                return {"movement_id": f"mvmt-{movement_name}", "movement_name": movement_name}
+        return None
+
     def create_operation(self, movement_name: str, remarks: str = "",
                          when=None) -> dict:  # noqa: D102
         when = when or time.localtime()
