@@ -178,6 +178,8 @@ TEXT: dict[str, dict[str, str]] = {
                            "'{b}'.",
                      "ja": "表示名「{name}」が「{a}」と「{b}」で重複しています。"},
     "create_btn": {"en": "Create Movement", "ja": "作業実行を作成"},
+    "create_btn_conductor": {"en": "Create Movement & Conductor",
+                             "ja": "作業実行＆コンダクターを作成"},
     "submitting": {"en": "Creating…", "ja": "登録中…"},
     "json_ready": {"en": "ready", "ja": "準備完了"},
     "json_invalid": {"en": "invalid JSON", "ja": "JSON 不正"},
@@ -197,6 +199,13 @@ TEXT: dict[str, dict[str, str]] = {
                     "ja": "作業実行・ロール関連付け・パラメータシート・代入値を"
                           "登録中です。ページを閉じたり、再送信したりしないで"
                           "ください。"},
+    "overlay_sub_conductor": {
+                    "en": "Writing the movement, role link, parameter sheet, "
+                          "substitution rows and conductor class. "
+                          "Please don't close this page or submit again.",
+                    "ja": "作業実行・ロール関連付け・パラメータシート・代入値・"
+                          "コンダクターを登録中です。ページを閉じたり、"
+                          "再送信したりしないでください。"},
     "elapsed": {"en": "{s}s elapsed", "ja": "{s} 秒経過"},
     "unlock": {"en": "Unlock the form anyway", "ja": "そのまま解除する"},
     "unlock_confirm": {"en": "Unlock the form? The run may still be finishing "

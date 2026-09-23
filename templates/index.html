@@ -20,7 +20,7 @@
   .pill .dot{width:8px;height:8px;border-radius:50%}
   .pill.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.2)}
   .pill.mock .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(var(--warn-rgb),.2)}
-  .wrap{max-width:1420px;margin:0 auto;padding:34px 34px 80px}
+  .wrap{max-width:1710px;margin:0 auto;padding:34px 34px 80px}
   .grid{display:grid;grid-template-columns:1.12fr 1fr;gap:26px;align-items:start}
   @media(max-width:980px){.grid{grid-template-columns:1fr}}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 30px;backdrop-filter:blur(10px);position:relative;overflow:hidden}
@@ -114,7 +114,8 @@
   /* Status and When are sized for their own content: a Japanese status pill
      ("作成完了") and a full 'YYYY-MM-DD HH:MM:SS' timestamp both wrap badly in
      a column sized for 'OK'. */
-  .listcard .tbl{table-layout:auto;min-width:520px}
+  .listcard .tbl{table-layout:auto;min-width:700px}
+  .listcard .name{word-break:break-all;white-space:normal}
   .listcard .tbl th:nth-child(2),.listcard .tbl td:nth-child(2){width:20%;min-width:116px}
   .listcard .tbl th:nth-child(3),.listcard .tbl td:nth-child(3){width:27%;min-width:168px}
   .listcard .tbl th:nth-child(4),.listcard .tbl td:nth-child(4){width:1%;min-width:78px}
@@ -529,6 +530,8 @@ const T = {{ {
   'json_needs_object': t('json_needs_object'),
   'cols_1': t('cols_1'), 'cols_n': t('cols_n'),
   'submitting': t('submitting'), 'elapsed': t('elapsed'),
+  'create_btn': t('create_btn'), 'create_btn_conductor': t('create_btn_conductor'),
+  'overlay_sub': t('overlay_sub'), 'overlay_sub_conductor': t('overlay_sub_conductor'),
   'still_working': t('still_working', s=cfg.var_timeout),
   'unlock_confirm': t('unlock_confirm'),
   'grid_seeded': t('grid_seeded'), 'grid_new': t('grid_new'),
@@ -838,8 +841,28 @@ const T = {{ {
     if (btn){ btn.disabled = false; btn.innerHTML = label; }
   }
 
+  // When the conductor toggle is on, relabel the button and the overlay
+  const condToggle = document.getElementById('create_conductor');
+  function syncBtnLabel(){
+    if (!btn) return;
+    if (condToggle && condToggle.checked){
+      btn.innerHTML = T.create_btn_conductor + ' <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-left:7px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    } else {
+      btn.innerHTML = T.create_btn + ' <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-left:7px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    }
+    label = btn.innerHTML;
+  }
+  if (condToggle) condToggle.addEventListener('change', syncBtnLabel);
+  syncBtnLabel();
+
   form.addEventListener('submit', (e) => {
     if (running) { e.preventDefault(); return; }   // second click / held Enter
+    // Swap overlay subtitle when conductor is included
+    if (sub && condToggle && condToggle.checked){
+      sub.textContent = T.overlay_sub_conductor;
+    } else if (sub) {
+      sub.textContent = T.overlay_sub;
+    }
     lock();
   }, true);
 
