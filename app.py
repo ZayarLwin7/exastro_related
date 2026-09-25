@@ -1452,16 +1452,20 @@ def settings_page():
     # Seeding the two private groups from env_defaults() is what showed a
     # colleague the founder's gateway and a "set · ••••1234" token hint.
     shared = settings.env_defaults()
-    if active is None and target is None:
-        base = {}
-        for field in settings.FIELDS:
-            blank = field["group"] in settings.PRIVATE_GROUPS
-            base[field["key"]] = "" if blank else shared[field["key"]]
-        # CLIENT_ID is derived from the org, so it is always left blank for the
-        # form to fill in from whatever organisation this person enters.
-        base["CLIENT_ID"] = ""
-    else:
-        base = shared
+    # The shared groups may be seeded from the install for anybody. The private
+    # ones -- connection and credentials -- must come from the profile being
+    # edited and nowhere else: seeding them from `.env` showed a colleague the
+    # installer's `set · ••••xxxx` on a profile that had no token at all.
+    base = {}
+    for field in settings.FIELDS:
+        key = field["key"]
+        if field["group"] in settings.PRIVATE_GROUPS:
+            base[key] = ""
+        else:
+            base[key] = shared[key]
+    # CLIENT_ID is derived from the org, so it is always left blank for the
+    # form to fill in from whatever organisation this person enters.
+    base["CLIENT_ID"] = ""
     merged = {**base, **((target or {}).get("payload") or {}),
               **((draft or {}).get("values") or {})}
     cl = client_for(username)

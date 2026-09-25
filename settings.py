@@ -659,17 +659,37 @@ def own_active_profile(username: str) -> dict | None:
 def own_effective(username: str) -> dict | None:
     """This user's resolved values, or None when they have no profile at all.
 
-    Deliberately does NOT fall back to `.env`. Those are the installer's
-    credentials, seeded once and adopted by the first account. A colleague
-    added later must set up a target of their own rather than silently write
-    to Exastro through the founder's token -- which is exactly what happened
-    when a brand-new account was treated as "configured" because the process
-    happened to have an .env.
+    Two different kinds of value are merged here, and conflating them caused a
+    real outage:
+
+    * the **private groups** -- connection and credentials -- come from this
+      person's profile and nowhere else. The `.env` holds whoever installed the
+      tool; letting its API token backfill over a colleague's username and
+      password meant `token()` (which prefers a token) used the installer's
+      credentials and Exastro answered 403, with the form meanwhile claiming
+      `set · ••••xxxx` for a profile that had no token at all.
+    * the **shared groups** -- menu names, timeouts, ids -- do fall back to
+      `.env`, because that is shared setup rather than a secret.
+
+    Returns None when the person has no profile: that is an answer, not an
+    invitation to fall back.
     """
     profile = own_active_profile(username)
     if profile is None:
         return None
-    return effective(profile.get("payload") or {})
+    payload = {k: v for k, v in (profile.get("payload") or {}).items()
+               if k in BY_KEY}
+    merged = env_defaults()
+    for field in FIELDS:
+        key = field["key"]
+        if field["group"] in PRIVATE_GROUPS and key not in payload:
+            # This person set nothing here. Blank, never the installer's.
+            merged[key] = False if field["kind"] == "bool" else ""
+        else:
+            merged[key] = payload.get(key, merged.get(key, ""))
+    coerce_types(merged)
+    merged.update({k: v for k, v in derived(merged).items() if v})
+    return merged
 
 
 def granted_profile_ids(username: str) -> list[int]:

@@ -5166,3 +5166,157 @@ def test_user_accounts_is_visible_on_the_settings_page(store):
     # and it is inside the bar, not tucked into the page body
     header = re.search(r'<header class="appbar">.*?</header>', body, re.S).group(0)
     assert "/settings/users" in header
+
+
+# ---------------------------------------------------------------------------
+# a user's own credentials must not be replaced by the install's
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def seeded_install(store, monkeypatch):
+    """An install whose .env already holds somebody's working credentials.
+
+    Depends on `store` deliberately: `store` is not autouse, and without it
+    these tests would create users in the real settings database.
+    """
+    monkeypatch.setattr(cfg, "MOCK", True)
+    monkeypatch.setattr(cfg, "GATEWAY_URL", "http://10.1.8.95:4040")
+    monkeypatch.setattr(cfg, "ORG_ID", "dat")
+    monkeypatch.setattr(cfg, "WORKSPACE_ID", "host_jidoukakiban-ws")
+    monkeypatch.setattr(cfg, "API_TOKEN", "TOKEN-FROM-DOTENV")
+    monkeypatch.setattr(cfg, "USER", "env-user")
+    monkeypatch.setattr(cfg, "PASSWORD", "env-pw")
+
+
+def test_a_colleagues_password_is_not_replaced_by_the_installs_token(seeded_install):
+    """The 403: `token()` prefers a token, so a backfilled .env token silently
+    takes over from the username and password the person actually entered."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("jidou", "jidou-password", role="coadmin")
+    pid = settings.save_profile("mine", {
+        "GATEWAY_URL": "http://10.1.8.95:4040", "ORG_ID": "dat",
+        "WORKSPACE_ID": "host_jidoukakiban-ws",
+        "USER": "host_jidoukakiban-ws-user",
+        "PASSWORD": "host_jidoukakiban-ws-user"}, owner="jidou")
+    settings.activate_profile(pid, owner="jidou")
+
+    eff = settings.own_effective("jidou")
+    assert eff["USER"] == "host_jidoukakiban-ws-user"
+    assert eff["PASSWORD"] == "host_jidoukakiban-ws-user"
+    assert not eff.get("API_TOKEN"), \
+        "the installer's token must not stand in for a colleague's password"
+    client = appmod.client_for("jidou")
+    assert not client._v("API_TOKEN"), "and the client must not send it either"
+    assert client._v("USER") and client._v("PASSWORD")
+
+
+def test_shared_settings_still_come_from_the_install(seeded_install):
+    """Only the private groups are personal. Blanking everything would make
+    every new account retune the timeouts and menu names the install already
+    settled."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("jidou", "jidou-password", role="coadmin")
+    pid = settings.save_profile("mine", {
+        "GATEWAY_URL": "http://10.1.8.95:4040", "ORG_ID": "dat",
+        "WORKSPACE_ID": "host_jidoukakiban-ws", "USER": "me", "PASSWORD": "me-pw"},
+        owner="jidou")
+    settings.activate_profile(pid, owner="jidou")
+    eff = settings.own_effective("jidou")
+    shared = settings.env_defaults()
+    for key in ("TIMEOUT", "VERIFY_TLS"):
+        # own_effective coerces types, so compare like with like rather than
+        # pitting the env's "30" against the resolved 30.
+        assert str(eff.get(key)) == str(shared.get(key)), \
+            f"{key} is shared setup and should be inherited"
+
+
+def test_the_form_never_claims_a_token_that_is_not_there(seeded_install):
+    """It showed `set · ••••xxxx` for the installer's token on a profile that
+    had none, which reads as 'my token is configured' and sends people looking
+    for a token they never set."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("jidou", "jidou-password", role="coadmin")
+    c = _login(appmod.app.test_client(), "jidou")
+    c.post("/settings/save", data={"profile_name": "mine",
+                                   "field_GATEWAY_URL": "http://10.1.8.95:4040",
+                                   "field_ORG_ID": "dat",
+                                   "field_WORKSPACE_ID": "host_jidoukakiban-ws",
+                                   "field_USER": "me", "field_PASSWORD": "me-pw"},
+           follow_redirects=True)
+    body = c.get("/settings").get_data(as_text=True)
+    token_field = re.search(r'<input[^>]*id="field_API_TOKEN"[^>]*>', body)
+    assert token_field, "the token field should still be offered"
+    assert "set ·" not in token_field.group(0), \
+        "a profile with no token must not render as though it had one"
+    # and the password they did set is still acknowledged
+    pw_field = re.search(r'<input[^>]*id="field_PASSWORD"[^>]*>', body)
+    assert "set ·" in pw_field.group(0)
+    # no trace of the installer's credentials anywhere on the page
+    assert "env-user" not in body and "TOKEN-FROM-DOTENV" not in body
+
+
+# ---------------------------------------------------------------------------
+# long names stay readable
+# ---------------------------------------------------------------------------
+
+def test_a_long_username_is_readable_on_every_signed_in_page(store):
+    """Truncated to one line with an ellipsis, two accounts can look alike and
+    neither can be acted on confidently."""
+    long_name = "kawashima.yusuke-nakamura-operations"
+    settings.create_user(long_name, "a-password", role="admin")
+    settings.adopt_orphans(long_name)
+    c = _login(appmod.app.test_client(), long_name)
+    for tpl in ("index.html", "settings.html", "users.html"):
+        body = (ROOT / "templates" / tpl).read_text(encoding="utf-8")
+        rule = re.search(r"\.userchip\{([^}]*)\}", body)
+        assert rule, f"{tpl} has no userchip"
+        decl = rule.group(1)
+        assert "line-clamp:2" in decl, f"{tpl} clips the name to one line"
+        assert "text-overflow:ellipsis" not in decl or "line-clamp" in decl
+        assert "anywhere" in decl, f"{tpl} should break a long unbroken name"
+    # and the name is actually rendered in full
+    assert long_name in c.get("/").get_data(as_text=True)
+
+
+def test_the_account_name_column_wraps_instead_of_vanishing(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("kawashima.yusuke-nakamura-operations", "a-password",
+                         role="coadmin")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    rule = re.search(r"\.grantwho\{([^}]*)\}", body)
+    assert rule, "no rule for the name column"
+    decl = rule.group(1)
+    assert "line-clamp:2" in decl, "the name should take two lines, not an ellipsis"
+    assert "white-space:nowrap" not in decl
+    assert "kawashima.yusuke-nakamura-operations" in body, \
+        "the full name should be in the page"
+
+
+def test_logout_is_not_washed_out(store):
+    """It was muted grey beside a full-contrast name chip, and read as disabled."""
+    for tpl in ("index.html", "settings.html", "users.html"):
+        body = (ROOT / "templates" / tpl).read_text(encoding="utf-8")
+        rule = re.search(r"\.logoutbtn\{([^}]*)\}", body)
+        assert rule, f"{tpl} has no logout button"
+        decl = rule.group(1)
+        assert "color:var(--mut)" not in decl, \
+            f"{tpl}: logout should be full-contrast, not muted"
+
+
+def test_the_product_name_sits_beside_the_mark_on_sign_in(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    c = appmod.app.test_client()
+    body = c.get("/login").get_data(as_text=True)
+    assert re.search(r'<div class="logorow">.*?class="logo".*?class="brand".*?</div>',
+                     body, re.S), "the name should share a row with the mark"
+    # exactly one mark: a duplicate left over from the old layout would be
+    # visible right above the new one
+    assert body.count('class="logo"') == 1
+    # and they are side by side, not stacked
+    assert re.search(r"\.logorow\{[^}]*display:flex", body)
+    assert "Exastro One Click Creator" in body

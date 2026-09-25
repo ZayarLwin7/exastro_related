@@ -13,7 +13,11 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:30px}
   .logo{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;margin-bottom:20px}
   .logo svg{width:25px;height:25px}
-  .brand{font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--acc);margin-bottom:5px}
+  /* The name sits beside the mark, the way it does on every signed-in page.
+     Two lines made the product name look like a heading and the real heading
+     like a subtitle. */
+  .logorow{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+  .brand{font-size:13px;font-weight:800;letter-spacing:-.01em;color:var(--acc);line-height:1.25}
   h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
   .lede{color:var(--mut);font-size:13.5px;line-height:1.6;margin-bottom:22px}
   .field{margin-bottom:16px}
@@ -31,10 +35,12 @@
 <body>
 <div class="wrap">
   <div class="card">
-    <div class="logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    <div class="logorow">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </div>
+      <div class="brand">{{ t('brand_name') }}</div>
     </div>
-    <div class="brand">{{ t('brand_name') }}</div>
     <h1>{{ t('first_run') if first_run else t('login') }}</h1>
     {% if first_run %}<p class="lede">{{ t('first_run_explain') }}</p>{% endif %}
 

@@ -886,6 +886,18 @@ configuration rather than somebody's property, and making every new account
 retype it would be pure friction. A field left blank is omitted from the stored
 profile and resolves to the install's default at run time.
 
+**The install's `.env` credentials are never anyone else's.** This caused a
+real 403. The `.env` holds whoever installed the tool. A colleague added later
+set up a profile with a username and password, but resolution backfilled the
+installer's API token over the top, and `token()` prefers a token -- so Exastro
+accepted a *valid* token for the wrong identity and refused the call. The form
+compounded it, showing `set · ••••xxxx` for a profile that had no token at all.
+
+Two kinds of value are now kept apart. Connection and credentials come from
+your own profile and nowhere else; timeouts, menu names and the rest are shared
+setup and still inherit from the install. A profile that never set a token
+resolves to no token, so the password grant actually runs.
+
 ### Roles
 
 | | admin | co-admin | user |
