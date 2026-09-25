@@ -9,8 +9,9 @@
 <link rel="stylesheet" href="/static/theme.css">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{padding:34px 24px 80px}
-  .wrap{max-width:760px;margin:0 auto}
+  /* Page padding belongs on .wrap, like every other page: setting it on body
+     is what the palette test exists to catch. */
+  .wrap{max-width:760px;margin:0 auto;padding:34px 34px 80px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 30px;margin-bottom:22px}
   h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
   h2{font-size:15px;font-weight:700;margin-bottom:6px}

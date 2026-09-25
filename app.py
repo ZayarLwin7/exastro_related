@@ -245,7 +245,7 @@ def require_target():
     to and come back as a network timeout — which reads like a broken Exastro,
     not like an app that was never told where to go.
     """
-    if cfg.MOCK or _unlocked() or request.path not in ITA_NEEDED:
+    if cfg.MOCK or request.path not in ITA_NEEDED:
         return None
     username = current_user()
     payload = (settings.own_active_profile(username) or {}).get("payload") or {}
@@ -289,7 +289,6 @@ def inject_i18n():
         # person's profile at another environment must never be invisible.
         "profile_name": active.get("name") or "",
         "profile_workspace": profile_values.get("WORKSPACE_ID", ""),
-        "settings_unlocked": _unlocked(),
         "theme": _theme(),
         "themes": [{"code": c, "name": i18n.t("theme_" + c, lang),
                     "active": c == _theme()} for c in THEMES],
@@ -366,10 +365,17 @@ def init_db() -> None:
         # CREATE COLUMN IF NOT EXISTS, so probe first — this runs on every boot.
         if "report_json" not in _columns(conn):
             conn.execute("ALTER TABLE creations ADD COLUMN report_json TEXT")
+        # `owner` arrived with logins: history is per person, so a shared ITA
+        # account does not mean a shared list of everyone's runs. Existing rows
+        # have no owner and are claimed by the first account that registers,
+        # exactly like the profiles.
+        if "owner" not in _columns(conn):
+            conn.execute("ALTER TABLE creations ADD COLUMN owner TEXT")
 
 
 def save_creation(movement_name: str, role_name: str, sheet_name: str,
-                  status: str, report: dict | None = None) -> int:
+                  status: str, report: dict | None = None,
+                  owner: str | None = None) -> int:
     # A space, not isoformat's 'T': this value is shown verbatim in the history
     # list, and an operator reads 'T' as a typo rather than a separator.
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -384,34 +390,44 @@ def save_creation(movement_name: str, role_name: str, sheet_name: str,
     with db() as conn:
         cur = conn.execute(
             "INSERT INTO creations (movement_name, role_name, sheet_name,"
-            " status, created_at, report_json) VALUES (?,?,?,?,?,?)",
-            (movement_name, role_name, sheet_name, status, now, blob),
+            " status, created_at, report_json, owner) VALUES (?,?,?,?,?,?,?)",
+            (movement_name, role_name, sheet_name, status, now, blob, owner),
         )
         return int(cur.lastrowid)
 
 
-def list_creations(limit: int = 10, offset: int = 0) -> list:
+def list_creations(limit: int = 10, offset: int = 0,
+                   owner: str | None = None) -> list:
     """One page of runs, newest first. History itself is never trimmed."""
+    sql = ("SELECT id, movement_name, role_name, sheet_name, status,"
+           " created_at, report_json FROM creations")
+    args: list = []
+    if owner is not None:
+        sql += " WHERE owner = ?"
+        args.append(owner)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
     with db() as conn:
-        return conn.execute(
-            "SELECT id, movement_name, role_name, sheet_name, status,"
-            " created_at, report_json FROM creations ORDER BY id DESC"
-            " LIMIT ? OFFSET ?", (limit, offset)
-        ).fetchall()
+        return conn.execute(sql, (*args, limit, offset)).fetchall()
 
 
-def count_creations() -> int:
+def count_creations(owner: str | None = None) -> int:
+    sql = "SELECT COUNT(*) FROM creations"
+    args: list = []
+    if owner is not None:
+        sql += " WHERE owner = ?"
+        args.append(owner)
     with db() as conn:
-        return int(conn.execute("SELECT COUNT(*) FROM creations").fetchone()[0])
+        return int(conn.execute(sql, args).fetchone()[0])
 
 
-def paginate_creations(page: int = 1, per_page: int = 10) -> dict:
+def paginate_creations(page: int = 1, per_page: int = 10,
+                       owner: str | None = None) -> dict:
     """Everything the history view needs: a page of rows plus pager metadata."""
-    total = count_creations()
+    total = count_creations(owner)
     pages = max(1, -(-total // per_page))          # ceiling division
     page = min(max(1, page), pages)
     offset = (page - 1) * per_page
-    rows = list_creations(per_page, offset)
+    rows = list_creations(per_page, offset, owner)
     return {
         "rows": rows, "page": page, "per_page": per_page, "total": total,
         "pages": pages, "has_prev": page > 1, "has_next": page < pages,
@@ -453,11 +469,20 @@ def _translatable_steps(snapshot) -> None:
         step["args"] = args
 
 
-def get_creation(creation_id: int) -> dict | None:
-    """One stored run with its report decoded, or None if it does not exist."""
+def get_creation(creation_id: int, owner: str | None = None) -> dict | None:
+    """One stored run with its report decoded, or None if it does not exist.
+
+    Scoped like everything else: asking for somebody else's run id returns None
+    rather than rendering it, so the detail page cannot be used to read around
+    the owner filter.
+    """
+    sql = "SELECT * FROM creations WHERE id = ?"
+    args: list = [creation_id]
+    if owner is not None:
+        sql += " AND owner = ?"
+        args.append(owner)
     with db() as conn:
-        row = conn.execute(
-            "SELECT * FROM creations WHERE id = ?", (creation_id,)).fetchone()
+        row = conn.execute(sql, args).fetchone()
     if row is None:
         return None
     report = None
@@ -834,9 +859,18 @@ def register():
     else:
         username = username.strip().lower()
         settings.adopt_orphans(username)
+        # Runs recorded before logins existed have no owner. They belong to
+        # whoever set the tool up, which is the first person to register.
+        with db() as conn:
+            cur = conn.execute(
+                "UPDATE creations SET owner = ? WHERE owner IS NULL"
+                " OR owner = ''", (username,))
+            adopted = cur.rowcount
         session.clear()
         session["user"] = username
         flash(i18n.t("welcome", _lang(), name=username), "success")
+        if adopted:
+            flash(i18n.t("history_adopted", _lang(), count=adopted), "success")
         return redirect("/")
     return redirect("/login")
 
@@ -865,11 +899,8 @@ def users_page():
     denied = _require_admin()
     if denied is not None:
         return denied
-    if _settings_locked():
-        return _locked_redirect()
     return render_template("users.html", users=settings.list_users(),
-                           me=current_user(),
-                           minutes=int(settings.UNLOCK_TTL // 60))
+                           me=current_user())
 
 
 @app.post("/settings/users/create")
@@ -877,8 +908,6 @@ def users_create():
     denied = _require_admin()
     if denied is not None:
         return denied
-    if _settings_locked():
-        return _locked_redirect()
     lang = _lang()
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
@@ -902,8 +931,6 @@ def users_delete():
     denied = _require_admin()
     if denied is not None:
         return denied
-    if _settings_locked():
-        return _locked_redirect()
     lang = _lang()
     username = (request.form.get("username") or "").strip()
     if settings._normalise_username(username) == current_user():
@@ -927,7 +954,8 @@ def index():
     # as query args; prefill so the form is ready to submit as-is.
     args = request.args
     return render_template("index.html",
-                           creations=paginate_creations(_page_arg(args)),
+                           creations=paginate_creations(_page_arg(args),
+                                                        owner=current_user()),
                            cfg=_request_config(), catalogue=cat,
                            movement_name=args.get("movement_name", ""),
                            role_name=args.get("role_name", ""),
@@ -1062,7 +1090,7 @@ def create():
             cat = None
         return render_template("index.html",
                                creations=paginate_creations(
-                                   _page_arg(request.args)),
+                                   _page_arg(request.args), owner=username),
                                cfg=_request_config(), catalogue=cat,
                                movement_name=movement_name, role_name=role_name,
                                sheet_name=sheet_name, parameters=params_raw,
@@ -1091,7 +1119,8 @@ def create():
     # later — the Exastro objects may change or be deleted in between.
     save_creation(movement_name, role_name, sheet_name, report["status"],
                   {"report": report, "params": params, "types": types,
-                   "execution_env": execution_env, "wait_vars": wait_vars})
+                   "execution_env": execution_env, "wait_vars": wait_vars},
+                  owner=username)
 
     return render_template(
         "result.html",
@@ -1129,7 +1158,7 @@ def favicon():
 @app.get("/creation/<int:creation_id>")
 def creation_detail(creation_id: int):
     """Full history of one run: every step, every parameter binding, as it happened."""
-    row = get_creation(creation_id)
+    row = get_creation(creation_id, owner=current_user())
     if row is None:
         abort(404)
     return render_template("detail.html", c=row, cfg=_request_config())
@@ -1149,7 +1178,8 @@ def api_creations():
         per_page = int(request.args.get("per_page") or 10)
     except (TypeError, ValueError):
         per_page = 10
-    page = paginate_creations(_page_arg(request.args), per_page)
+    page = paginate_creations(_page_arg(request.args), per_page,
+                              owner=current_user())
     return jsonify({
         "page": page["page"], "pages": page["pages"], "total": page["total"],
         "per_page": page["per_page"], "has_prev": page["has_prev"],
@@ -1166,31 +1196,14 @@ def api_creations():
 
 
 # ---------------------------------------------------------------------------
-# Settings: named connection profiles, gated behind a PIN
+# Settings: named connection profiles, private to each signed-in person
 # ---------------------------------------------------------------------------
 
-# The session flag is the only thing standing between a stranger on the network
-# and repointing this app at an arbitrary host with your token, so it expires.
-UNLOCK_KEY = "settings_unlocked_at"
+# The login is the gate. A PIN used to sit in front of this page as well, which
+# only made sense when the app had no identities of its own -- two prompts to
+# reach the same form, and the PIN's only remaining job was to confuse.
 THEME_KEY = "theme"
 THEMES = ("dark", "light")           # the two palettes in static/theme.css
-
-
-def _unlocked() -> bool:
-    stamp = session.get(UNLOCK_KEY) or 0
-    try:
-        return (time.time() - float(stamp)) < settings.UNLOCK_TTL
-    except (TypeError, ValueError):
-        return False
-
-
-def _settings_locked() -> bool:
-    return settings.pin_configured() and not _unlocked()
-
-
-def _locked_redirect():
-    flash(i18n.t("pin_required", _lang()), "error")
-    return redirect("/settings")
 
 
 def _id_options(cl=None) -> dict:
@@ -1311,12 +1324,6 @@ def _validate(values: dict) -> list[str]:
 @app.get("/settings")
 def settings_page():
     username = current_user()
-    # Login is the primary gate. A PIN, when one already exists, remains an
-    # additional gate; a new install no longer forces a shared PIN on everyone.
-    if settings.pin_configured() and not _unlocked():
-        return render_template("settings_pin.html",
-                               pin_set=True,
-                               cfg=_request_config())
     active = settings.own_active_profile(username)
     # A rejected save wins over everything else: the operator must see the form
     # they just filled in, including a pasted token, not the stored profile.
@@ -1353,39 +1360,7 @@ def settings_page():
                            fields=_form_fields(merged, options),
                            options_found=bool(options),
                            derived=settings.derived(merged),
-                           minutes=int(settings.UNLOCK_TTL // 60),
                            cfg=_request_config())
-
-
-@app.post("/settings/unlock")
-def settings_unlock():
-    """Verify the legacy PIN, or create one when the store has none yet.
-
-    App login is checked before this route. Once a PIN exists it remains a
-    second gate, and `EXA_SETTINGS_PIN` overrides the stored one.
-    """
-    lang = _lang()
-    pin = request.form.get("pin") or ""
-    if not settings.pin_configured():
-        confirm = request.form.get("pin_confirm") or ""
-        if len(pin) < 4:
-            flash(i18n.t("pin_short", lang), "error")
-        elif pin != confirm:
-            flash(i18n.t("pin_mismatch", lang), "error")
-        else:
-            settings.set_pin(pin)
-            session[UNLOCK_KEY] = time.time()
-            flash(i18n.t("pin_created", lang), "success")
-        return redirect("/settings")
-    ok, wait = settings.check_pin(pin)
-    if ok:
-        session[UNLOCK_KEY] = time.time()
-        return redirect("/settings")
-    if wait > 0:
-        flash(i18n.t("pin_cooldown", lang, s=int(wait + 0.5)), "error")
-    else:
-        flash(i18n.t("pin_wrong", lang, left=settings.attempts_left()), "error")
-    return redirect("/settings")
 
 
 @app.get("/theme/<mode>")
@@ -1395,13 +1370,6 @@ def theme_set(mode: str):
     if mode in THEMES:
         session[THEME_KEY] = mode
     return redirect(request.referrer or "/")
-
-
-@app.post("/settings/lock")
-def settings_lock():
-    session.pop(UNLOCK_KEY, None)
-    flash(i18n.t("locked", _lang()), "success")
-    return redirect("/settings")
 
 
 def _clear_flags() -> tuple:
@@ -1417,8 +1385,6 @@ def _draft_id() -> int | None:
 
 @app.post("/settings/save")
 def settings_save():
-    if _settings_locked():
-        return _locked_redirect()
     lang = _lang()
     username = current_user()
     name = (request.form.get("profile_name") or "").strip()
@@ -1456,8 +1422,6 @@ def settings_save():
 
 @app.post("/settings/activate")
 def settings_activate():
-    if _settings_locked():
-        return _locked_redirect()
     username = current_user()
     pid = _draft_id()
     profile = settings.activate_profile(pid, owner=username) if pid else None
@@ -1471,8 +1435,6 @@ def settings_activate():
 
 @app.post("/settings/delete")
 def settings_delete():
-    if _settings_locked():
-        return _locked_redirect()
     username = current_user()
     pid = _draft_id()
     if pid and settings.delete_profile(pid, owner=username):
@@ -1491,8 +1453,6 @@ def settings_test():
     operator is still configuring should be reported as text on the page, not as
     a 500 with a traceback.
     """
-    if _settings_locked():
-        return _locked_redirect()
     lang = _lang()
     pid = _draft_id()
     values = _form_values()

@@ -173,11 +173,7 @@
       <h2>{{ t('profiles_title') }}</h2>
       <div class="spacer"></div>
       <a class="btn sm" href="/settings?new=1">{{ t('set_new') }}</a>
-      <form method="post" action="/settings/lock" style="display:inline">
-        <button class="btn sm" type="submit">{{ t('lock') }}</button>
-      </form>
     </div>
-    <p class="lede">{{ t('unlocked_note', minutes=minutes) }}</p>
 
     {% if profiles %}
     <table class="tbl">

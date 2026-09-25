@@ -42,12 +42,6 @@ SETTINGS_DB = os.getenv("EXA_SETTINGS_DB", "settings.db")
 # in a rendered page or a JSON response — only `secret_hint()` about them.
 SECRET_FIELDS = ("API_TOKEN", "PASSWORD")
 
-# How long a verified PIN keeps the settings page open, and how wrong guesses
-# are punished.
-UNLOCK_TTL = 15 * 60
-MAX_ATTEMPTS = 5
-LOCKOUT_SECONDS = 60
-
 # ---------------------------------------------------------------------------
 # The field table: storage, validation and the form all read this.
 # group: connection | auth | tuning | advanced
@@ -651,97 +645,6 @@ def public_payload(profile: dict) -> dict:
         payload[f"{key}_hint"] = secret_hint(payload.get(key))
         payload.pop(key, None)
     return payload
-
-
-# ---------------------------------------------------------------------------
-# settings PIN
-# ---------------------------------------------------------------------------
-
-def _meta_get(conn, key: str) -> str | None:
-    row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
-    return row["value"] if row else None
-
-
-def _meta_set(conn, key: str, value: str) -> None:
-    conn.execute("INSERT INTO meta (key, value) VALUES (?,?)"
-                 " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                 (key, value))
-
-
-def pin_configured() -> bool:
-    if os.getenv("EXA_SETTINGS_PIN"):
-        return True
-    with _connect() as conn:
-        return bool(_meta_get(conn, "pin"))
-
-
-def _hash_pin(pin: str, salt: str) -> str:
-    return hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"),
-                               bytes.fromhex(salt), 120_000).hex()
-
-
-def set_pin(pin: str) -> None:
-    pin = str(pin or "")
-    if len(pin) < 4:
-        raise ValueError("PIN must be at least 4 characters")
-    salt = secrets.token_hex(16)
-    with _connect() as conn:
-        _meta_set(conn, "pin", f"{salt}${_hash_pin(pin, salt)}")
-
-
-def _lock_state(conn) -> float:
-    """Seconds still to wait, or 0."""
-    raw = _meta_get(conn, "pin_lock")
-    if not raw:
-        return 0.0
-    try:
-        until = float(raw)
-    except ValueError:
-        return 0.0
-    return max(0.0, until - time.time())
-
-
-def check_pin(pin: str) -> tuple[bool, float]:
-    """Verify the PIN. Returns (ok, seconds_locked)."""
-    env_pin = os.getenv("EXA_SETTINGS_PIN")
-    with _connect() as conn:
-        wait = _lock_state(conn)
-        if wait > 0:
-            return False, wait
-        stored = _meta_get(conn, "pin")
-        if env_pin:
-            ok = secrets.compare_digest(str(pin), env_pin)
-        elif not stored:
-            return False, 0.0                     # bootstrap handled by caller
-        else:
-            salt, _, digest = str(stored).partition("$")
-            try:
-                ok = secrets.compare_digest(_hash_pin(str(pin or ""), salt),
-                                            digest)
-            except ValueError:                    # salt not hex -> unusable
-                ok = False
-        if ok:
-            _meta_set(conn, "pin_fails", "0")
-            return True, 0.0
-        try:
-            fails = int(_meta_get(conn, "pin_fails") or 0) + 1
-        except ValueError:
-            fails = 1
-        _meta_set(conn, "pin_fails", str(fails))
-        if fails >= MAX_ATTEMPTS and not env_pin:
-            _meta_set(conn, "pin_lock", str(time.time() + LOCKOUT_SECONDS))
-            _meta_set(conn, "pin_fails", "0")
-            return False, float(LOCKOUT_SECONDS)
-        return False, 0.0
-
-
-def attempts_left() -> int:
-    with _connect() as conn:
-        try:
-            fails = int(_meta_get(conn, "pin_fails") or 0)
-        except ValueError:
-            fails = 0
-    return max(0, MAX_ATTEMPTS - fails)
 
 
 # The settings store is only as private as the database file; make the intent

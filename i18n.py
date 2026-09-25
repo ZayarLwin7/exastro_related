@@ -94,6 +94,9 @@ TEXT: dict[str, dict[str, str]] = {
         "ja": "ログイン中の自分自身のアカウントは削除できません。"},
     "admin_only": {"en": "Only an admin can manage user accounts.",
                    "ja": "ユーザーアカウントの管理は管理者のみ行えます。"},
+    "history_adopted": {
+        "en": "Your {count} existing run(s) are now listed under your account.",
+        "ja": "既存の {count} 件の実行履歴をあなたのアカウント名下に表示しています。"},
 
     # ---- form -------------------------------------------------------------
     "new_movement": {"en": "New Movement", "ja": "新規作業実行"},
@@ -266,6 +269,10 @@ TEXT: dict[str, dict[str, str]] = {
                           "コンダクターを登録中です。ページを閉じたり、"
                           "再送信したりしないでください。"},
     "elapsed": {"en": "{s}s elapsed", "ja": "{s} 秒経過"},
+
+    # The busy overlay's escape hatch. Not the settings PIN (that is gone): this
+    # is the person saying "yes, start another run even though the last one may
+    # still be going", which is a different decision and stays available.
     "unlock": {"en": "Unlock the form anyway", "ja": "そのまま解除する"},
     "unlock_confirm": {"en": "Unlock the form? The run may still be finishing "
                              "in Exastro, and starting another one will "
@@ -404,32 +411,6 @@ TEXT: dict[str, dict[str, str]] = {
               "without a restart.",
         "ja": "名前付き接続プロファイル。選択または編集するだけで、再起動なしに "
               "接続先が切り替わります。"},
-    "pin_title": {"en": "Settings are locked", "ja": "設定はロックされています"},
-    "pin_explain": {
-        "en": "Enter the Settings PIN to view or change the connection.",
-        "ja": "接続を確認・変更するには設定 PIN を入力してください。"},
-    "pin_label": {"en": "PIN", "ja": "PIN"},
-    "pin_button": {"en": "Unlock", "ja": "ロック解除"},
-    "pin_choose": {"en": "Choose a Settings PIN", "ja": "設定 PIN を作成"},
-    "pin_choose_note": {
-        "en": "No PIN exists yet, so whoever sets one first owns it. After this "
-              "it is required every time.",
-        "ja": "PIN はまだありません。最初に設定した PIN が以降必要になります。"},
-    "pin_confirm": {"en": "Repeat PIN", "ja": "PIN を再入力"},
-    "pin_created": {"en": "PIN created.", "ja": "PIN を作成しました。"},
-    "pin_wrong": {"en": "Incorrect PIN. {left} attempt(s) left.",
-                  "ja": "PIN が正しくありません。残り {left} 回。"},
-    "pin_short": {"en": "The PIN must be at least 4 characters.",
-                  "ja": "PIN は 4 文字以上で入力してください。"},
-    "pin_mismatch": {"en": "The two PINs do not match.", "ja": "PIN が一致しません。"},
-    "pin_cooldown": {"en": "Too many attempts. Wait {s} seconds.",
-                     "ja": "試行回数を超過しました。{s} 秒お待ちください。"},
-    "pin_required": {"en": "Unlock Settings with your PIN first.",
-                     "ja": "先に PIN で設定のロックを解除してください。"},
-    "locked": {"en": "Settings locked.", "ja": "設定をロックしました。"},
-    "unlocked_note": {"en": "Unlocked for {minutes} more minute(s).",
-                      "ja": "あと {minutes} 分間でロックが戻ります。"},
-    "lock": {"en": "Lock now", "ja": "今すぐロック"},
     "back_app": {"en": "Back to the form", "ja": "入力画面へ戻る"},
     "settings_nav": {"en": "Settings", "ja": "設定"},
     "writes_to": {"en": "Writing to", "ja": "接続先"},

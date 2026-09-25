@@ -1170,7 +1170,7 @@ def tmpdb(tmp_path, monkeypatch):
 
 def test_history_keeps_every_run_but_pages_by_ten(tmpdb):
     for i in range(35):
-        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK")
+        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK", owner="testuser")
     page1 = appmod.paginate_creations(1)
     assert page1["total"] == 35 and page1["pages"] == 4
     assert len(page1["rows"]) == 10
@@ -1186,7 +1186,7 @@ def test_history_keeps_every_run_but_pages_by_ten(tmpdb):
 
 def test_pages_out_of_range_clamp_instead_of_erroring(tmpdb):
     for i in range(3):
-        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK")
+        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK", owner="testuser")
     assert appmod.paginate_creations(99)["page"] == 1
     assert appmod.paginate_creations(0)["page"] == 1
     assert appmod.paginate_creations(-5)["page"] == 1
@@ -1195,7 +1195,7 @@ def test_pages_out_of_range_clamp_instead_of_erroring(tmpdb):
 
 def test_history_pages_are_clickable(mock_client, tmpdb):
     for i in range(25):
-        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK")
+        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK", owner="testuser")
     html = mock_client.get("/").get_data(as_text=True)
     assert "?page=2" in html and "3 runs" in html or "?page=2" in html
     assert "/creation/" in html
@@ -1214,7 +1214,7 @@ def test_report_round_trips_through_storage(tmpdb):
     cid = appmod.save_creation("m", "p:r", "s", "PARTIAL",
                                {"report": report, "params": {"a": 1, "b": "x"},
                                 "types": {"a": "integer", "b": "string"},
-                                "execution_env": "DEMO_EXEC_ENV", "wait_vars": True})
+                                "execution_env": "DEMO_EXEC_ENV", "wait_vars": True}, owner="testuser")
     got = appmod.get_creation(cid)
     assert got["status"] == "PARTIAL"
     assert got["report"]["report"]["bindings"][0]["variable"] == "m:a"
@@ -1250,7 +1250,7 @@ def test_init_db_adds_the_report_column_to_an_old_table(tmp_path, monkeypatch):
 def test_init_db_is_idempotent(tmpdb):
     appmod.init_db()
     appmod.init_db()
-    cid = appmod.save_creation("m", "p:r", "s", "OK", {"report": {"steps": []}})
+    cid = appmod.save_creation("m", "p:r", "s", "OK", {"report": {"steps": []}}, owner="testuser")
     assert appmod.get_creation(cid)["report"]["report"]["steps"] == []
 
 
@@ -1281,14 +1281,14 @@ def test_detail_route_rejects_an_unknown_run(mock_client, tmpdb):
 def test_detail_route_handles_a_legacy_row(mock_client, tmpdb):
     with appmod.db() as conn:
         cur = conn.execute("INSERT INTO creations (movement_name, role_name,"
-                           " sheet_name, status, created_at) VALUES"
-                           " ('old','p:r','s','OK','2026-01-01')")
+                           " sheet_name, status, created_at, owner) VALUES"
+                           " ('old','p:r','s','OK','2026-01-01','testuser')")
     html = mock_client.get(f"/creation/{cur.lastrowid}").get_data(as_text=True)
     assert "predates detailed history" in html
 
 
 def test_index_links_each_run_to_its_detail(mock_client, tmpdb):
-    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}})
+    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}}, owner="testuser")
     html = mock_client.get("/").get_data(as_text=True)
     assert "/creation/" in html
     assert "Detail" in html
@@ -1297,7 +1297,7 @@ def test_index_links_each_run_to_its_detail(mock_client, tmpdb):
 
 def test_api_creations_exposes_urls_not_the_blob(mock_client, tmpdb):
     appmod.save_creation("m1", "p:r", "s1", "OK",
-                         {"report": {"steps": [{"label": "x" * 200}]}})
+                         {"report": {"steps": [{"label": "x" * 200}]}}, owner="testuser")
     data = mock_client.get("/api/creations").get_json()["creations"]
     assert data[0]["has_detail"] is True
     assert data[0]["detail_url"].startswith("/creation/")
@@ -1325,7 +1325,7 @@ def test_overlay_is_declared_before_the_script_that_binds_it():
 
 def test_api_creations_reports_the_page(mock_client, tmpdb):
     for i in range(12):
-        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK")
+        appmod.save_creation(f"m{i}", "p:r", f"s{i}", "OK", owner="testuser")
     data = mock_client.get("/api/creations").get_json()
     assert data["total"] == 12 and data["pages"] == 2 and data["per_page"] == 10
     assert len(data["creations"]) == 10
@@ -1430,7 +1430,7 @@ def test_normalize_maps_loose_tags():
 
 
 def test_index_shows_one_language_only(mock_client, tmpdb):
-    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}})
+    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}}, owner="testuser")
     en = visible(mock_client.get("/").get_data(as_text=True))
     assert "Movement Name" in en and "Execution Environment" in en
     assert not CJK.search(en), "English mode leaked Japanese text"
@@ -1514,7 +1514,7 @@ def test_stored_report_stays_language_neutral(tmpdb):
     cid = appmod.save_creation("x", "p:r", "x", "OK",
                                {"report": report, "params": {"a": 1},
                                 "types": {"a": "string"},
-                                "execution_env": "E", "wait_vars": False})
+                                "execution_env": "E", "wait_vars": False}, owner="testuser")
     with appmod.db() as conn:
         raw = conn.execute("SELECT report_json FROM creations WHERE id=?",
                            (cid,)).fetchone()[0]
@@ -1536,7 +1536,7 @@ def test_history_recorded_before_i18n_still_translates(tmpdb, mock_client):
     cid = appmod.save_creation("old", "p:r", "old", "OK",
                                {"report": report, "params": {"a": 1},
                                 "types": {"a": "string"},
-                                "execution_env": "", "wait_vars": False})
+                                "execution_env": "", "wait_vars": False}, owner="testuser")
     row = appmod.get_creation(cid)
     steps = row["report"]["report"]["steps"]
     assert steps[0]["i18n"] == "step_movement"
@@ -1556,7 +1556,7 @@ def test_a_step_with_no_key_at_all_falls_back_to_its_label(tmpdb, mock_client):
               "bindings": []}
     cid = appmod.save_creation("odd", "p:r", "odd", "OK",
                                {"report": report, "params": {}, "types": {},
-                                "execution_env": "", "wait_vars": False})
+                                "execution_env": "", "wait_vars": False}, owner="testuser")
     mock_client.set_cookie("exa_lang", "ja")
     html = mock_client.get(f"/creation/{cid}").get_data(as_text=True)
     assert "Some manual step" in html          # rendered, not swallowed
@@ -1572,7 +1572,7 @@ def test_nav_elements_are_balanced_in_every_template():
 
 
 def test_no_japanese_leaks_into_english_across_all_pages(mock_client, tmpdb):
-    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}})
+    appmod.save_creation("m1", "p:r", "s1", "OK", {"report": {"steps": []}}, owner="testuser")
     cid = appmod.paginate_creations()["rows"][0]["id"]
     mock_client.set_cookie("exa_lang", "en")
     for url in ("/", f"/creation/{cid}"):
@@ -1640,7 +1640,7 @@ def test_blank_rest_name_still_defaults_server_side(mock_client, tmpdb):
 
 
 def test_new_timestamps_have_a_space_not_an_iso_T(tmpdb):
-    cid = appmod.save_creation("m", "p:r", "s", "OK")
+    cid = appmod.save_creation("m", "p:r", "s", "OK", owner="testuser")
     stamp = appmod.get_creation(cid)["created_at"]
     assert "T" not in stamp
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", stamp)
@@ -1656,8 +1656,9 @@ def test_when_filter_normalizes_older_iso_timestamps():
 def test_history_and_detail_show_the_normalized_time(tmpdb, mock_client):
     with appmod.db() as conn:
         cur = conn.execute("INSERT INTO creations (movement_name, role_name,"
-                           " sheet_name, status, created_at) VALUES"
-                           " ('legacy','p:r','s','OK','2026-09-09T17:44:37')")
+                           " sheet_name, status, created_at, owner) VALUES"
+                           " ('legacy','p:r','s','OK','2026-09-09T17:44:37',"
+                           " 'testuser')")
         cid = cur.lastrowid
     idx = mock_client.get("/").get_data(as_text=True)
     assert "2026-09-09 17:44:37" in idx
@@ -1768,10 +1769,14 @@ def cfg_restore():
 
 @pytest.fixture
 def unlocked(mock_client, store):
-    """A logged-in settings session with the legacy PIN gate enabled."""
-    r = mock_client.post("/settings/unlock",
-                         data={"pin": "4321", "pin_confirm": "4321"})
-    assert r.status_code == 302
+    """A client able to reach /settings.
+
+    Used to be "logged in *and* past the PIN". The PIN is gone -- the login is
+    the gate -- so this is now just the signed-in client. The name is kept so
+    the settings tests below read as one group.
+    """
+    assert mock_client.get("/settings").status_code == 200, \
+        "a signed-in user must reach the settings page without a second prompt"
     return mock_client
 
 
@@ -1884,59 +1889,27 @@ def test_secret_hint_shows_only_the_tail(store):
     assert "abcdefgh" not in json.dumps(public)
 
 
-def test_pin_bootstrap_then_verification(store):
-    assert settings.pin_configured() is False
-    assert settings.check_pin("anything") == (False, 0.0)   # nothing to match
-    settings.set_pin("4321")
-    assert settings.pin_configured() is True
-    assert settings.check_pin("4321")[0] is True
-    assert settings.check_pin("0000")[0] is False
-    with pytest.raises(ValueError):
-        settings.set_pin("12")
+def test_the_settings_pin_is_gone_and_login_is_the_gate(store):
+    """The PIN gated a page the app had no accounts for.
+
+    With per-person logins it became a second prompt in front of the same form,
+    so the code behind it is removed rather than merely bypassed.
+    """
+    for gone in ("pin_configured", "check_pin", "set_pin", "attempts_left",
+                 "UNLOCK_TTL", "MAX_ATTEMPTS", "LOCKOUT_SECONDS"):
+        assert not hasattr(settings, gone), \
+            f"{gone} should have been removed with the PIN"
+    assert not any(k.startswith("pin_") for k in i18n.TEXT), \
+        "a translation for a removed PIN is dead weight"
 
 
-def test_pin_lockout_after_five_wrong_attempts(store):
-    settings.set_pin("9876")
-    for _ in range(settings.MAX_ATTEMPTS - 1):
-        assert settings.check_pin("0000")[0] is False
-    assert settings.attempts_left() == 1
-    ok, wait = settings.check_pin("0000")
-    assert ok is False and wait > 0
-    # even the right PIN is refused while cooling down
-    assert settings.check_pin("9876") == (False, pytest.approx(wait, abs=5))
-
-
-def test_env_pin_overrides_the_stored_one(store, monkeypatch):
-    settings.set_pin("9876")
-    monkeypatch.setenv("EXA_SETTINGS_PIN", "s3cret")
-    assert settings.check_pin("s3cret")[0] is True
-    assert settings.check_pin("9876")[0] is False
+def test_a_signed_in_user_reaches_settings_with_no_second_prompt(unlocked):
+    page = unlocked.get("/settings").get_data(as_text=True)
+    assert "field_GATEWAY_URL" in page
+    assert "settings/lock" not in page, "there is nothing left to lock"
 
 
 # ---- the routes -----------------------------------------------------------
-
-def test_settings_page_stays_locked_without_the_pin(unlocked):
-    locked = unlocked          # same cookie jar; this one is unlocked
-    fresh = _login(appmod.app.test_client())
-    page = fresh.get("/settings").get_data(as_text=True)
-    assert "field_GATEWAY_URL" not in page
-    assert "Unlock" in page or "ロック解除" in page
-    # and an authenticated page does expose it
-    assert "field_GATEWAY_URL" in locked.get("/settings").get_data(as_text=True)
-
-
-def test_saving_without_the_pin_is_refused(mock_client, store):
-    settings.set_pin("4321")
-    before = len(settings.list_profiles())
-    r = mock_client.post("/settings/save",
-                         data={"profile_name": "sneak",
-                               "field_GATEWAY_URL": "http://evil:1",
-                               "field_ORG_ID": "x", "field_WORKSPACE_ID": "y"})
-    assert r.status_code == 302
-    assert r.headers["Location"].endswith("/settings")
-    assert len(settings.list_profiles()) == before
-    assert settings.active_profile()["payload"]["GATEWAY_URL"] == cfg.GATEWAY_URL
-
 
 def test_settings_page_never_serves_the_stored_token(unlocked, store, monkeypatch):
     monkeypatch.setattr(cfg, "MOCK", True)
@@ -2034,11 +2007,6 @@ def test_activate_unknown_profile_is_reported_not_crashed(unlocked, store):
     r = unlocked.post("/settings/activate", data={"profile_id": "4242"},
                       follow_redirects=True)
     assert "No such profile" in r.get_data(as_text=True)
-
-
-def test_lock_ends_the_settings_session(unlocked, store):
-    unlocked.post("/settings/lock")
-    assert "field_GATEWAY_URL" not in unlocked.get("/settings").get_data(as_text=True)
 
 
 def test_test_connection_probes_the_draft_without_touching_the_active_one(
@@ -2172,7 +2140,7 @@ def test_healthz_names_the_active_target(mock_client, store):
 
 
 def test_gear_links_to_settings_on_every_page(tmpdb, mock_client, store):
-    cid = appmod.save_creation("m", "p:r", "s", "OK")
+    cid = appmod.save_creation("m", "p:r", "s", "OK", owner="testuser")
     for path in ("/", f"/creation/{cid}"):
         page = mock_client.get(path).get_data(as_text=True)
         assert 'href="/settings"' in page, path
@@ -2457,7 +2425,7 @@ def test_create_is_refused_before_a_target_exists(fresh_copy):
 def test_local_history_stays_readable_without_a_target(fresh_copy, tmpdb):
     """The database is the app's own record; needing Exastro is no reason to
     hide it."""
-    cid = appmod.save_creation("m", "p:r", "s", "OK")
+    cid = appmod.save_creation("m", "p:r", "s", "OK", owner="testuser")
     assert fresh_copy.get(f"/creation/{cid}").status_code == 200
     assert fresh_copy.get("/api/creations").status_code == 200
 
@@ -2610,7 +2578,7 @@ def test_an_unreadable_identity_still_sends_a_non_empty_list(monkeypatch):
 
 THEME_CSS = (ROOT / "static" / "theme.css")
 PAGES = ("index.html", "result.html", "detail.html", "settings.html",
-         "settings_pin.html")
+         "users.html", "login.html")
 
 
 def test_japanese_renders_in_noto_sans_jp():
@@ -4465,21 +4433,6 @@ def test_login_failure_and_private_settings_listing(tmpdb, store, monkeypatch):
     assert "Alice profile" not in http.get("/").get_data(as_text=True)
 
 
-def test_existing_pin_remains_a_second_gate_after_login(tmpdb, store,
-                                                          monkeypatch):
-    monkeypatch.setattr(cfg, "MOCK", True)
-    settings.create_user("alice", "alice-password")
-    settings.adopt_orphans("alice")
-    settings.set_pin("4321")
-    http = _login(appmod.app.test_client(), username="alice")
-    locked = http.get("/settings").get_data(as_text=True)
-    assert "field_GATEWAY_URL" not in locked
-    assert "Unlock" in locked
-    unlocked = http.post("/settings/unlock", data={"pin": "4321"},
-                         follow_redirects=True).get_data(as_text=True)
-    assert "field_GATEWAY_URL" in unlocked
-
-
 def test_client_cache_is_per_user_and_rebuilds_after_profile_edit(store,
                                                                   monkeypatch):
     settings.create_user("alice", "alice-password")
@@ -4619,3 +4572,89 @@ def test_two_users_never_share_a_client_target(mock_client, store):
     assert a_client is not b_client
     assert a_client._v("GATEWAY_URL") == "http://a:1"
     assert b_client._v("GATEWAY_URL") == "http://b:2"
+
+
+# ---------------------------------------------------------------------------
+# creation history is per person
+# ---------------------------------------------------------------------------
+
+def test_history_lists_only_your_own_runs(mock_client, store):
+    settings.create_user("workmate", "workmate-password")
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="testuser")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="workmate")
+    page = mock_client.get("/").get_data(as_text=True)
+    assert "mine-one" in page
+    assert "theirs-one" not in page, \
+        "a shared ITA account must not mean a shared list of everyone's runs"
+
+
+def test_the_counts_and_pager_agree_with_the_visible_rows(mock_client, store):
+    settings.create_user("workmate", "workmate-password")
+    for i in range(15):
+        appmod.save_creation(f"mine-{i}", "p:r", f"s{i}", "OK", owner="testuser")
+    for i in range(40):
+        appmod.save_creation(f"theirs-{i}", "p:r", f"t{i}", "OK", owner="workmate")
+    page = mock_client.get("/").get_data(as_text=True)
+    assert "mine-14" in page
+    assert "theirs-0" not in page, "a workmate's rows must not leak in"
+    # the pager is built from the same filtered count, so it cannot offer a
+    # page that only exists because of somebody else's rows
+    assert "15" in page and "?page=2" in page
+
+
+def test_another_persons_run_detail_is_not_readable(mock_client, store):
+    """Asking for someone else's run id must 404, not merely hide the link."""
+    settings.create_user("workmate", "workmate-password")
+    cid = appmod.save_creation("secret-run", "p:r", "s", "OK", owner="workmate")
+    r = mock_client.get(f"/creation/{cid}")
+    assert r.status_code == 404, "the detail page must not render another user's run"
+    api = mock_client.get(f"/api/creations")
+    assert "secret-run" not in api.get_data(as_text=True)
+
+
+def test_runs_are_filed_under_the_person_who_started_them(mock_client, store):
+    """A run is recorded against the signed-in user, not the active profile."""
+    settings.create_user("workmate", "workmate-password")
+    # The second person needs a profile of their own: role choices come from
+    # their target, and without one the run is refused before it ever starts.
+    wp = settings.save_profile("workmate-env",
+                               {"GATEWAY_URL": "http://wm:1", "ORG_ID": "o",
+                                "WORKSPACE_ID": "w", "API_TOKEN": "wm-token"},
+                               owner="workmate")
+    settings.activate_profile(wp, owner="workmate")
+    as_workmate = _login(appmod.app.test_client(), "workmate")
+    r = as_workmate.post("/create", data={
+        "movement_name": "workmate-run", "role_package": "demo_pkg",
+        "role_select": "DEMO_HOST_JOB", "exec_env": "DEMO_EXEC_ENV",
+        "wait_vars": "on", "parameters": '{"a": 1}'}, follow_redirects=True)
+    assert r.status_code == 200
+    rows = appmod.list_creations(10, 0, owner="workmate")
+    assert [x["movement_name"] for x in rows] == ["workmate-run"]
+    assert appmod.list_creations(10, 0, owner="testuser") == [], \
+        "the run belongs to whoever started it, not to whoever else is signed in"
+
+def test_history_written_before_logins_is_claimed_by_the_first_account(store,
+                                                                     tmpdb,
+                                                                     monkeypatch):
+    import app as fresh
+    monkeypatch.setattr(cfg, "MOCK", True)
+    fresh.init_db()
+    appmod.save_creation("pre-login-run", "p:r", "s", "OK")   # no owner
+    assert appmod.count_creations() == 1
+    c = appmod.app.test_client()
+    c.post("/register", data={"username": "founder", "password": "founder-password",
+                              "password_confirm": "founder-password"},
+           follow_redirects=True)
+    rows = appmod.list_creations(10, 0, owner="founder")
+    assert [r["movement_name"] for r in rows] == ["pre-login-run"], \
+        "an install upgrading to logins must not orphan its own history"
+
+
+def test_the_history_card_is_scoped_per_user(mock_client, store):
+    settings.create_user("workmate", "workmate-password")
+    appmod.save_creation("mine", "p:r", "s", "OK", owner="testuser")
+    page = mock_client.get("/").get_data(as_text=True)
+    assert "mine" in page
+    as_workmate = _login(appmod.app.test_client(), "workmate")
+    theirs = as_workmate.get("/").get_data(as_text=True)
+    assert "mine" not in theirs, "the history panel must render the other user's own"

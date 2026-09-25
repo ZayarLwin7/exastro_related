@@ -855,8 +855,19 @@ Two rules that are deliberate:
   are signed in with. An install nobody can add accounts to is an install nobody
   can onboard onto.
 
-The PIN still works if you have set one: `/settings` asks for the login first and
-the PIN second, so switching this on does not lock you out of an existing setup.
+**The settings PIN is gone.** It existed because the app had no identities of its
+own, so it was the only thing standing between a stranger on the network and the
+page holding your token. That job now belongs to the login, and leaving both
+would mean two prompts in front of one form. The old unlock/lock routes, the
+template and the translation strings are removed rather than left dormant. If
+`EXA_SETTINGS_PIN` is set in the environment it is simply no longer read.
+
+**Creation history is per person too.** Your history card lists the runs *you*
+started, and another person's run id returns 404 rather than rendering. Runs
+recorded before logins existed are claimed by the first account that registers,
+so upgrading does not orphan the history you already had. A shared ITA account
+does not mean a shared history -- you can all write to one Exastro workspace and
+still see only your own work.
 
 Isolation is enforced in the queries, not in the page: `get_profile(id, owner)`
 and its siblings refuse a profile id belonging to somebody else, so posting
