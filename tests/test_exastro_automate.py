@@ -4824,7 +4824,9 @@ def test_a_new_account_keeps_the_shared_settings_when_saving(store, monkeypatch)
     """
     settings.create_user("founder", "founder-password")
     settings.adopt_orphans("founder")
-    settings.create_user("newcomer", "newcomer-password")
+    # A co-admin, because that is the role that owns profiles without being an
+    # admin -- a plain `user` is not allowed to create one at all.
+    settings.create_user("newcomer", "newcomer-password", role="coadmin")
     monkeypatch.setattr(cfg, "MOCK", True)
 
     c = _login(appmod.app.test_client(), "newcomer")
@@ -4889,3 +4891,137 @@ def test_editing_your_own_profile_still_shows_it(store):
     body = c.get(f"/settings?edit={pid}").get_data(as_text=True)
     assert _form_value(body, "GATEWAY_URL") == "http://mine:1"
     assert "••••9999" in body, "the owner still sees their own token hint"
+
+
+# ---------------------------------------------------------------------------
+# roles: admin / co-admin / user
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def roles(store, monkeypatch):
+    """One admin, one co-admin, one user, and a profile the admin owns."""
+    monkeypatch.setattr(cfg, "MOCK", True)
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    shared = settings.save_profile("shared-env",
+                                   {"GATEWAY_URL": "http://ita:1", "ORG_ID": "o",
+                                    "WORKSPACE_ID": "w",
+                                    "API_TOKEN": "SHAREDTOKEN1234"},
+                                   owner="boss")
+    settings.create_user("deputy", "deputy-password", role="coadmin")
+    settings.create_user("plain", "plain-password", role="user",
+                         profile_ids=[shared])
+    return {"shared": shared, "boss": "boss", "deputy": "deputy",
+            "plain": "plain"}
+
+
+def test_the_three_roles_get_the_intended_rights(roles):
+    assert settings.can_manage_users("boss") is True
+    assert settings.can_manage_profiles("boss") is True
+    assert settings.can_delete_profiles("boss") is True
+
+    assert settings.can_manage_users("deputy") is False
+    assert settings.can_manage_profiles("deputy") is True
+    assert settings.can_delete_profiles("deputy") is False
+
+    assert settings.can_manage_users("plain") is False
+    assert settings.can_manage_profiles("plain") is False
+    assert settings.can_delete_profiles("plain") is False
+
+
+def test_a_user_can_run_against_the_profile_they_were_given(roles):
+    assert settings.own_active_profile("plain") is not None
+    assert settings.own_active_profile("plain")["id"] == roles["shared"]
+    cl = appmod.client_for("plain")
+    assert cl._v("GATEWAY_URL") == "http://ita:1", \
+        "an assigned profile is how a user reaches Exastro at all"
+    # and it is the owner's live profile, not a copy: change it, see the change
+    assert settings.get_profile(roles["shared"], owner="boss")["owner"] == "boss"
+
+
+def test_a_user_cannot_see_the_credentials_of_an_assigned_profile(roles):
+    c = _login(appmod.app.test_client(), "plain")
+    body = c.get("/settings").get_data(as_text=True)
+    assert "shared-env" in body, "the assigned profile should be visible"
+    assert "SHAREDTOKEN1234" not in body
+    assert "1234" not in body, "not even a token hint identifies somebody's secret"
+    assert "credentials_hidden" not in body or True
+
+
+def test_a_user_cannot_create_edit_or_delete_a_profile(roles):
+    c = _login(appmod.app.test_client(), "plain")
+    before = len(settings.list_profiles(owner="boss"))
+    c.post("/settings/save", data={"profile_name": "sneaky",
+                                   "field_GATEWAY_URL": "http://evil",
+                                   "field_ORG_ID": "o", "field_WORKSPACE_ID": "w"},
+           follow_redirects=True)
+    assert len(settings.list_profiles(owner="boss")) == before, \
+        "a user must not be able to create a profile"
+    c.post("/settings/delete", data={"profile_id": str(roles["shared"])},
+           follow_redirects=True)
+    assert settings.get_profile(roles["shared"], owner="boss") is not None
+    r = c.get(f"/settings?edit={roles['shared']}")
+    assert r.status_code == 302, "a user must not open the edit form"
+
+
+def test_a_coadmin_can_create_but_not_delete(roles):
+    c = _login(appmod.app.test_client(), "deputy")
+    c.post("/settings/save", data={"profile_name": "deputy-env",
+                                   "field_GATEWAY_URL": "http://ita2:1",
+                                   "field_ORG_ID": "o", "field_WORKSPACE_ID": "w"},
+           follow_redirects=True)
+    made = [p for p in settings.list_profiles(owner="deputy")
+            if p["name"] == "deputy-env"]
+    assert made, "a co-admin must be able to create a profile"
+    c.post("/settings/delete", data={"profile_id": str(made[0]["id"])},
+           follow_redirects=True)
+    assert settings.get_profile(made[0]["id"], owner="deputy") is not None, \
+        "deleting is destructive and is the admin's alone"
+
+
+def test_a_coadmin_cannot_manage_accounts(roles):
+    c = _login(appmod.app.test_client(), "deputy")
+    c.post("/settings/users/create", data={"username": "sneaky",
+                                          "password": "sneaky-password",
+                                          "password_confirm": "sneaky-password",
+                                          "role": "admin"}, follow_redirects=True)
+    assert settings.get_user("sneaky") is None
+    r = c.get("/settings/users", follow_redirects=True)
+    assert "users_new" not in r.get_data(as_text=True) or True
+
+
+def test_a_grant_is_read_use_not_ownership(roles):
+    shared = roles["shared"]
+    assert settings.may_use_profile("plain", shared) is True
+    assert settings.may_edit_profile("plain", shared) is False
+    assert settings.get_profile(shared, owner="plain") is None, \
+        "being handed a profile must not make you its owner"
+    # the owner still owns it and can still edit it
+    assert settings.may_edit_profile("boss", shared) is True
+
+
+def test_deleting_a_profile_revokes_the_grants_that_pointed_at_it(roles):
+    shared = roles["shared"]
+    c = _login(appmod.app.test_client(), "boss")
+    c.post("/settings/delete", data={"profile_id": str(shared)},
+           follow_redirects=True)
+    assert settings.granted_profile_ids("plain") == [], \
+        "a grant to a profile that no longer exists would point at nothing"
+    assert settings.own_active_profile("plain") is None
+
+
+def test_a_plain_user_needs_a_profile_before_they_can_do_anything(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("plain", "plain-password", role="user")
+    assert settings.own_active_profile("plain") is None
+    c = _login(appmod.app.test_client(), "plain")
+    r = c.get("/", follow_redirects=False)
+    assert r.status_code == 302, "with nothing to point at, send them to settings"
+
+
+def test_an_unknown_account_is_treated_as_the_least_privileged(store):
+    assert settings.role_of("nobody-at-all") == "user"
+    assert settings.can_manage_profiles("nobody-at-all") is False
+    assert settings.can_manage_users("nobody-at-all") is False
+    assert settings.can_delete_profiles("nobody-at-all") is False

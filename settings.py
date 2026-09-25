@@ -42,6 +42,28 @@ SETTINGS_DB = os.getenv("EXA_SETTINGS_DB", "settings.db")
 # in a rendered page or a JSON response — only `secret_hint()` about them.
 SECRET_FIELDS = ("API_TOKEN", "PASSWORD")
 
+# Three roles, in descending order of what they may do.
+#
+#   admin  - everything: accounts, who gets which profile, and any profile
+#   coadmin- may create and edit profiles of their own, but delete nothing and
+#            manage nobody
+#   user   - may only *use* the profiles an admin assigned to them; they cannot
+#            create, edit or delete a profile, and never see a stored secret
+ROLE_ADMIN = "admin"
+ROLE_COADMIN = "coadmin"
+ROLE_USER = "user"
+ROLES = (ROLE_ADMIN, ROLE_COADMIN, ROLE_USER)
+# Only these two may create a profile. A `user` is a consumer of somebody
+# else's configuration, which is the whole point of assigning them one.
+PROFILE_ROLES = (ROLE_ADMIN, ROLE_COADMIN)
+
+
+def normalise_role(role: str | None) -> str:
+    """Anything unrecognised is the least privileged thing we can offer."""
+    role = str(role or "").strip().lower()
+    return role if role in ROLES else ROLE_USER
+
+
 # The two groups that identify *this* connection and *this* person's credentials.
 # A new account must be asked for these; the rest of the table is shared
 # configuration (ITA menu names, timeouts, ids) that a fresh install already
@@ -306,6 +328,23 @@ def init_store() -> None:
                 # hand out the next accounts
                 conn.execute("UPDATE users SET is_admin=1 WHERE id=("
                              "SELECT MIN(id) FROM users)")
+        # `is_admin` was a yes/no; three roles need a name.
+        if "role" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL"
+                         " DEFAULT 'user'")
+            conn.execute("UPDATE users SET role = ? WHERE is_admin = 1",
+                         (ROLE_ADMIN,))
+        # A profile an admin has handed to somebody. Separate from `owner`: the
+        # profile stays where it is, so its credentials are stored once and an
+        # edit by the owner reaches the user who was given it.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS profile_grants(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                profile_id INTEGER NOT NULL,
+                granted_at TEXT NOT NULL,
+                UNIQUE(username, profile_id)
+            )""")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meta(
                 key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
@@ -345,48 +384,123 @@ def _row_user(row) -> dict | None:
             "created_at": row["created_at"]}
 
 
-def create_user(username: str, password: str, is_admin: bool = False) -> bool:
-    """Create an app user, or report that the name/password is unusable.
+def create_user(username: str, password: str, role: str | None = None,
+                profile_ids=()) -> bool:
+    """Create an app user, with a role and any profiles granted to them.
 
     The first account on an install is always an admin: somebody has to be able
     to hand out the rest, and on a fresh install that somebody is whoever
-    arrived first.
+    arrived first. Grants are applied in the same transaction, so an account is
+    never briefly alive without the profile it was created for.
     """
     username = _normalise_username(username)
     if (len(username) < 3 or any(ch.isspace() for ch in username)
             or not str(password or "")):
         return False
+    role = normalise_role(role)
     salt = secrets.token_hex(16)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with _connect() as conn:
             first = not conn.execute(
                 "SELECT COUNT(*) FROM users").fetchone()[0]
+            if first:
+                role = ROLE_ADMIN
             conn.execute(
                 "INSERT INTO users (username, password_hash, created_at,"
-                " is_admin) VALUES (?,?,?,?)",
+                " is_admin, role) VALUES (?,?,?,?,?)",
                 (username, f"{salt}${_hash_password(password, salt)}", now,
-                 1 if (is_admin or first) else 0))
+                 1 if role == ROLE_ADMIN else 0, role))
+            for pid in _clean_ids(profile_ids):
+                # A grant is only useful if the profile really exists.
+                if conn.execute("SELECT id FROM profiles WHERE id=?",
+                                (pid,)).fetchone():
+                    conn.execute(
+                        "INSERT OR IGNORE INTO profile_grants"
+                        " (username, profile_id, granted_at) VALUES (?,?,?)",
+                        (username, pid, now))
     except sqlite3.IntegrityError:
         return False
     return True
 
 
-def is_admin(username: str) -> bool:
-    """May this account hand out and revoke other accounts?"""
+def _clean_ids(values) -> list[int]:
+    out = []
+    for value in values or ():
+        try:
+            out.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def set_role(username: str, role: str) -> bool:
+    username = _normalise_username(username)
+    role = normalise_role(role)
     with _connect() as conn:
-        row = conn.execute("SELECT is_admin FROM users WHERE username=?",
+        if conn.execute("SELECT id FROM users WHERE username=?",
+                        (username,)).fetchone() is None:
+            return False
+        if role != ROLE_ADMIN and not _another_admin_exists(conn, username):
+            return False       # never leave the install with no admin
+        conn.execute("UPDATE users SET role=?, is_admin=? WHERE username=?",
+                     (role, 1 if role == ROLE_ADMIN else 0, username))
+    return True
+
+
+def _another_admin_exists(conn, exclude: str) -> bool:
+    return bool(conn.execute(
+        "SELECT 1 FROM users WHERE role=? AND username<>? LIMIT 1",
+        (ROLE_ADMIN, _normalise_username(exclude))).fetchone())
+
+
+def role_of(username: str) -> str:
+    """This account's role; an unknown account is a plain user, never an admin."""
+    with _connect() as conn:
+        row = conn.execute("SELECT role FROM users WHERE username=?",
                            (_normalise_username(username),)).fetchone()
-    return bool(row and row["is_admin"])
+    if row is None:
+        return ROLE_USER
+    return normalise_role(row["role"])
+
+
+def can_manage_profiles(username: str) -> bool:
+    """May this person create, edit or delete a profile of their own?"""
+    return role_of(username) in PROFILE_ROLES
+
+
+def can_delete_profiles(username: str) -> bool:
+    """Deleting is destructive and unrecoverable, so it is admin-only."""
+    return role_of(username) == ROLE_ADMIN
+
+
+def can_manage_users(username: str) -> bool:
+    return role_of(username) == ROLE_ADMIN
+
+
+def is_admin(username: str) -> bool:
+    """Kept for callers that only ever asked "is this the top level?"."""
+    return can_manage_users(username)
 
 
 def list_users() -> list[dict]:
+    order = ", ".join(f"'{r}'" for r in ROLES)
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT username, created_at, is_admin FROM users"
-            " ORDER BY is_admin DESC, username").fetchall()
-    return [{"username": r["username"], "created_at": r["created_at"],
-             "is_admin": bool(r["is_admin"])} for r in rows]
+            f"SELECT username, created_at, role FROM users"
+            f" ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'coadmin' THEN 1"
+            f" ELSE 2 END, username").fetchall()
+        out = []
+        for r in rows:
+            grants = conn.execute(
+                "SELECT profile_id FROM profile_grants WHERE username=?"
+                " ORDER BY profile_id", (r["username"],)).fetchall()
+            out.append({"username": r["username"],
+                        "created_at": r["created_at"],
+                        "role": normalise_role(r["role"]),
+                        "is_admin": normalise_role(r["role"]) == ROLE_ADMIN,
+                        "granted": [g["profile_id"] for g in grants]})
+    return out
 
 
 def delete_user(username: str) -> bool:
@@ -454,16 +568,34 @@ def _row_profile(row) -> dict:
 
 
 def list_profiles(owner: str | None = None) -> list[dict]:
+    """Profiles one person may *see* in Settings.
+
+    Their own, plus any profile an admin granted them. A grant is read and
+    use, not ownership, so `granted` says which is which and the caller decides
+    what to do with that -- the settings page strips the secrets.
+    """
     with _connect() as conn:
         if owner is None:
             rows = conn.execute(
                 "SELECT * FROM profiles ORDER BY active DESC, name"
             ).fetchall()
         else:
+            name = _normalise_username(owner)
             rows = conn.execute(
                 "SELECT * FROM profiles WHERE owner=? ORDER BY active DESC, name",
-                (_normalise_username(owner),)).fetchall()
-    return [_row_profile(r) for r in rows]
+                (name,)).fetchall()
+            granted = conn.execute(
+                "SELECT p.* FROM profiles p JOIN profile_grants g"
+                " ON g.profile_id = p.id WHERE g.username=? AND p.owner<>?"
+                " ORDER BY p.name", (name, name)).fetchall()
+            rows = list(rows) + list(granted)
+    out = []
+    for r in rows:
+        profile = _row_profile(r)
+        profile["granted"] = (owner is not None
+                              and profile.get("owner") != _normalise_username(owner))
+        out.append(profile)
+    return out
 
 
 def get_profile(profile_id: int, owner: str | None = None) -> dict | None:
@@ -493,16 +625,35 @@ def active_profile(owner: str | None = None) -> dict | None:
 
 
 def own_active_profile(username: str) -> dict | None:
-    """The user's selected profile, or their first profile as a safe fallback."""
+    """The profile this person's next run will use.
+
+    Preference order: the one they activated, then one they own, then one an
+    admin granted them. The last case is how a plain `user` -- who by design
+    owns nothing -- reaches an Exastro at all.
+
+    Ownership is recorded on the result so callers can tell "this is mine and I
+    may edit it" from "this was lent to me and I may only run against it".
+    """
     username = _normalise_username(username)
     active = active_profile(username)
     if active is not None:
+        active = dict(active)
+        active["granted"] = active.get("owner") != username
         return active
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM profiles WHERE owner=? ORDER BY id LIMIT 1",
             (username,)).fetchone()
-    return _row_profile(row) if row else None
+        if row is None:
+            row = conn.execute(
+                "SELECT p.* FROM profiles p JOIN profile_grants g"
+                " ON g.profile_id = p.id WHERE g.username=? ORDER BY p.id"
+                " LIMIT 1", (username,)).fetchone()
+    if row is None:
+        return None
+    profile = dict(_row_profile(row))
+    profile["granted"] = profile.get("owner") != username
+    return profile
 
 
 def own_effective(username: str) -> dict | None:
@@ -519,6 +670,82 @@ def own_effective(username: str) -> dict | None:
     if profile is None:
         return None
     return effective(profile.get("payload") or {})
+
+
+def granted_profile_ids(username: str) -> list[int]:
+    username = _normalise_username(username)
+    with _connect() as conn:
+        return [r["profile_id"] for r in conn.execute(
+            "SELECT profile_id FROM profile_grants WHERE username=?"
+            " ORDER BY profile_id", (username,)).fetchall()]
+
+
+def set_grants(username: str, profile_ids=()) -> bool:
+    """Replace this account's assigned profiles.
+
+    Only an admin may call this, and a grant never makes the recipient the
+    owner: the profile stays where it is, so a later edit by its owner is
+    picked up and the stored token exists in exactly one place.
+    """
+    username = _normalise_username(username)
+    with _connect() as conn:
+        if conn.execute("SELECT id FROM users WHERE username=?",
+                        (username,)).fetchone() is None:
+            return False
+        wanted = [pid for pid in _clean_ids(profile_ids)
+                  if conn.execute("SELECT id FROM profiles WHERE id=?",
+                                  (pid,)).fetchone()]
+        conn.execute("DELETE FROM profile_grants WHERE username=?", (username,))
+        for pid in wanted:
+            conn.execute("INSERT OR IGNORE INTO profile_grants"
+                         " (username, profile_id, granted_at) VALUES (?,?,?)",
+                         (username, pid, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    return True
+
+
+def may_edit_profile(username: str, profile_id: int) -> bool:
+    """May this person open this profile *for editing*?
+
+    Own profile and a profile-managing role, or nothing. A granted profile is
+    readable and runnable, but editing it would mean editing somebody else's
+    stored credentials.
+    """
+    if not can_manage_profiles(username):
+        return False
+    return get_profile(profile_id, owner=username) is not None
+
+
+def usable_profile_ids(username: str) -> list[int]:
+    """Every profile this person may point a run at: their own plus grants.
+
+    A `user` has no profiles of their own by design, so this is the only way
+    they can reach an Exastro at all.
+    """
+    with _connect() as conn:
+        own = [r["id"] for r in conn.execute(
+            "SELECT id FROM profiles WHERE owner=?"
+            " ORDER BY id", (_normalise_username(username),)).fetchall()]
+        granted = [r["profile_id"] for r in conn.execute(
+            "SELECT profile_id FROM profile_grants WHERE username=?"
+            " ORDER BY profile_id", (_normalise_username(username),)).fetchall()]
+    seen, out = set(), []
+    for pid in (*own, *granted):
+        if pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+    return out
+
+
+def may_use_profile(username: str, profile_id: int) -> bool:
+    """Is this profile one this person is allowed to *run* against?
+
+    Read and use, but not edit: being handed a profile is not being given the
+    credentials or the ability to redirect somebody else's Exastro.
+    """
+    try:
+        return int(profile_id) in usable_profile_ids(username)
+    except (TypeError, ValueError):
+        return False
 
 
 def adopt_orphans(username: str) -> int:

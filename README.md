@@ -886,6 +886,35 @@ configuration rather than somebody's property, and making every new account
 retype it would be pure friction. A field left blank is omitted from the stored
 profile and resolves to the install's default at run time.
 
+### Roles
+
+| | admin | co-admin | user |
+|---|---|---|---|
+| Create a profile | ✓ | ✓ | — |
+| Edit own profile | ✓ | ✓ | — |
+| **Delete** a profile | ✓ | — | — |
+| Use an assigned profile | ✓ | ✓ | ✓ |
+| Create / delete users | ✓ | — | — |
+| Assign profiles to people | ✓ | — | — |
+| Edit somebody else's profile | ✓ | — | — |
+
+A **user** owns nothing. They sign in and run against whatever profile an
+admin assigned them, which is how they reach Exastro at all. The profile stays
+owned by whoever created it, so the credentials are stored once and an edit by
+the owner reaches them immediately. They see the name and the target, never the
+token -- not even the `••••1234` hint, which still says whose secret is in play.
+
+When an admin creates a person, the role and the assigned profiles are chosen on
+the same form. A plain user created with nothing assigned is flagged, because
+they would otherwise sign in to a page that cannot do anything.
+
+Two rules that protect the install from itself: the last admin cannot be demoted
+or deleted, and an unknown account is treated as the least-privileged role
+rather than being trusted by default.
+
+**The sign-in page clears its own messages after 7 seconds.** A sign-in page is
+reloaded constantly; a stale "wrong password" sitting on it is just noise.
+
 **Creation history is per person too.** Your history card lists the runs *you*
 started, and another person's run id returns 404 rather than rendering. Runs
 recorded before logins existed are claimed by the first account that registers,

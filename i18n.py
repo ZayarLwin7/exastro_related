@@ -94,6 +94,42 @@ TEXT: dict[str, dict[str, str]] = {
         "ja": "ログイン中の自分自身のアカウントは削除できません。"},
     "admin_only": {"en": "Only an admin can manage user accounts.",
                    "ja": "ユーザーアカウントの管理は管理者のみ行えます。"},
+    # ---- roles and assigned profiles ---------------------------------------
+    "role_admin": {"en": "Admin", "ja": "管理者"},
+    "role_coadmin": {"en": "Co-admin", "ja": "副管理者"},
+    "role_user": {"en": "User", "ja": "一般ユーザー"},
+    "role_label": {"en": "Role", "ja": "権限"},
+    "assigned_badge": {"en": "assigned", "ja": "割り当て"},
+    "credentials_hidden": {
+        "en": "held by the owner — not shown",
+        "ja": "所有者が管理（非表示）"},
+    "assigned_profiles": {
+        "en": "Profiles this person may use",
+        "ja": "このユーザーが使用できるプロファイル"},
+    "assigned_profiles_hint": {
+        "en": "Assigned profiles stay owned by whoever created them. The "
+              "person can run against them but cannot see their credentials or "
+              "change them.",
+        "ja": "割り当てられたプロファイルの所有者は作成者のままです。使用者はそれを使"
+              "用できますが、認証情報の表示や変更はできません。"},
+    "not_permitted": {
+        "en": "Your role does not allow that.",
+        "ja": "現在の権限では操作できません。"},
+    "delete_not_permitted": {
+        "en": "Only an admin can delete a profile.",
+        "ja": "プロファイルの削除は管理者のみ実行できます。"},
+    "save": {"en": "Save", "ja": "保存"},
+    "role_saved": {"en": "Updated the role for '{name}'.", "ja": "「{name}」の権限を更新しました。"},
+    "grants_saved": {"en": "Updated the assigned profiles for '{name}'.",
+                     "ja": "「{name}」に割り当てるプロファイルを更新しました。"},
+    "last_admin": {
+        "en": "The last admin cannot be demoted or deleted — somebody has to be "
+              "able to manage accounts.",
+        "ja": "最後の管理者の権限変更・削除はできません。アカウント管理の担当が必要です。"},
+    "user_needs_profile": {
+        "en": "This person has no profile of their own, so assign at least one "
+              "for them to be able to run anything.",
+        "ja": "このユーザーには専用プロファイルがないため、実行できるように1つ以上割り当ててください。"},
     "own_profile_missing": {
         "en": "You do not have a connection profile yet. Create your own in "
               "Settings -- each person's profiles are private, so nobody "

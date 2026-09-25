@@ -172,7 +172,9 @@
     <div class="head">
       <h2>{{ t('profiles_title') }}</h2>
       <div class="spacer"></div>
+      {% if can_manage_profiles %}
       <a class="btn sm" href="/settings?new=1">{{ t('set_new') }}</a>
+      {% endif %}
     </div>
 
     {% if profiles %}
@@ -187,11 +189,13 @@
           <td>
             <b>{{ pr.name }}</b>
             {% if pr.active %} <span class="badge">{{ t('active_badge') }}</span>{% endif %}
+            {% if pr.granted %} <span class="badge">{{ t('assigned_badge') }}</span>{% endif %}
           </td>
           <td class="code dim">{{ pr.payload.GATEWAY_URL or '—' }}<br>
             <span class="dim">{{ pr.payload.ORG_ID or '—' }} / {{ pr.payload.WORKSPACE_ID or '—' }}</span></td>
           <td class="dim" style="font-size:12px">
-            {% if pr.payload.API_TOKEN_hint %}{{ t('set_token') }} · {{ pr.payload.API_TOKEN_hint }}
+            {% if pr.payload.CREDENTIALS_HIDDEN %}<span class="dim">{{ t('credentials_hidden') }}</span>
+            {% elif pr.payload.API_TOKEN_hint %}{{ t('set_token') }} · {{ pr.payload.API_TOKEN_hint }}
             {% elif pr.payload.USER %}{{ pr.payload.USER }}
             {% else %}{{ t('secret_unset') }}{% endif %}
           </td>
@@ -203,11 +207,15 @@
                 <button class="btn sm" type="submit">{{ t('set_activate') }}</button>
               </form>
               {% endif %}
+              {% if not pr.granted and can_manage_profiles %}
               <a class="btn sm" href="/settings?edit={{ pr.id }}">{{ t('set_edit') }}</a>
+              {% endif %}
+              {% if not pr.granted and can_delete_profiles %}
               <form method="post" action="/settings/delete" data-confirm="1">
                 <input type="hidden" name="profile_id" value="{{ pr.id }}">
                 <button class="btn sm warnbtn" type="submit">{{ t('set_delete') }}</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>

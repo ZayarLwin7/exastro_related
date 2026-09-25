@@ -23,6 +23,8 @@
   .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
   .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
   .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  @keyframes bannerFade{to{opacity:0;transform:translateY(-4px)}}
+  .banner.leaving{animation:bannerFade .45s ease forwards}
 </style>
 </head>
 <body>
@@ -36,7 +38,10 @@
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
-        <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
+        {# Transient by design: a sign-in page is reloaded constantly, and a
+           stale "wrong password" sitting there is just noise. Fades at 6.5s and
+           is removed at 7s so the layout closes up behind it. #}
+        <div class="banner {{ 'err' if category == 'error' else 'ok' }}" role="status" data-dismiss-ms="7000">{{ message }}</div>
       {% endfor %}
     {% endwith %}
 
@@ -59,5 +64,19 @@
     </form>
   </div>
 </div>
+<script>
+  // Banners here are transient. The fade is CSS so it still happens if this
+  // never runs; the removal is what closes the gap it leaves behind.
+  (function () {
+    var life = 7000, fade = 450;
+    document.querySelectorAll('.banner[data-dismiss-ms]').forEach(function (el) {
+      var wait = parseInt(el.getAttribute('data-dismiss-ms'), 10) || life;
+      setTimeout(function () {
+        el.classList.add('leaving');
+        setTimeout(function () { el.remove(); }, fade);
+      }, Math.max(0, wait - fade));
+    });
+  })();
+</script>
 </body>
 </html>

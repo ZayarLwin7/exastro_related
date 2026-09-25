@@ -304,6 +304,9 @@ def inject_i18n():
         "tf": tf,
         "current_user": username,
         "current_user_is_admin": settings.is_admin(username) if username else False,
+        "current_user_role": settings.role_of(username) if username else "",
+        "can_manage_profiles": settings.can_manage_profiles(username) if username else False,
+        "can_delete_profiles": settings.can_delete_profiles(username) if username else False,
         "auth_enabled": settings.user_count() > 0,
         # The header shows where this user's writes are going: pointing one
         # person's profile at another environment must never be invisible.
@@ -907,10 +910,29 @@ def _require_admin():
 
     Returns None when the caller may proceed, or a response to send instead.
     """
-    if not settings.is_admin(current_user()):
+    if not settings.can_manage_users(current_user()):
         flash(i18n.t("admin_only", _lang()), "error")
         return redirect("/settings")
     return None
+
+
+def _without_secrets(payload: dict) -> dict:
+    """Strip the credentials from a profile somebody else owns.
+
+    A granted profile is shown so the person knows which environment they are
+    pointed at. The token is not part of that message, and the hint is removed
+    too: a `set · ••••1234` still confirms a secret exists and whose.
+    """
+    out = {k: v for k, v in (payload or {}).items() if k not in settings.SECRET_FIELDS}
+    for key in settings.SECRET_FIELDS:
+        out.pop(f"{key}_hint", None)
+    out["CREDENTIALS_HIDDEN"] = True
+    return out
+
+
+def _denied(key: str = "not_permitted"):
+    flash(i18n.t(key, _lang()), "error")
+    return redirect("/settings")
 
 
 @app.get("/settings/users")
@@ -918,8 +940,17 @@ def users_page():
     denied = _require_admin()
     if denied is not None:
         return denied
+    # Labels are built here rather than as t('role_' ~ r) in the template: a
+    # concatenated key cannot be checked for existence, and that check is what
+    # catches a typo before it reaches a page.
+    role_choices = [{"code": r, "label": i18n.t("role_" + r, _lang())}
+                    for r in settings.ROLES]
     return render_template("users.html", users=settings.list_users(),
-                           me=current_user())
+                           me=current_user(),
+                           role_choices=role_choices,
+                           grantable=[{**pr, "label":
+                                       f"{pr['name']} · {pr['payload'].get('GATEWAY_URL', '')}"}
+                                      for pr in settings.list_profiles()])
 
 
 @app.post("/settings/users/create")
@@ -931,16 +962,54 @@ def users_create():
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     confirm = request.form.get("password_confirm") or ""
+    role = settings.normalise_role(request.form.get("role"))
+    grants = request.form.getlist("grant_profile")
     if password != confirm:
         flash(i18n.t("password_mismatch", lang), "error")
     elif len(password) < 8:
         # A login password is a long-lived secret guarding that person's ITA
         # token; 8 is a floor, not a suggestion.
         flash(i18n.t("user_password_short", lang), "error")
-    elif not settings.create_user(username, password):
+    elif not settings.create_user(username, password, role=role,
+                                  profile_ids=grants):
         flash(i18n.t("user_create_failed", lang), "error")
+    elif role == settings.ROLE_USER and not grants:
+        # A plain user owns no profile, so with none assigned they would sign in
+        # to a page that cannot do anything. Say so rather than let them find out.
+        flash(i18n.t("user_needs_profile", lang), "error")
     else:
         flash(i18n.t("user_created", lang,
+                     name=settings._normalise_username(username)), "success")
+    return redirect("/settings/users")
+
+
+@app.post("/settings/users/role")
+def users_role():
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    lang = _lang()
+    username = (request.form.get("username") or "").strip()
+    role = settings.normalise_role(request.form.get("role"))
+    if not settings.set_role(username, role):
+        flash(i18n.t("last_admin", lang), "error")
+    else:
+        flash(i18n.t("role_saved", lang,
+                     name=settings._normalise_username(username)), "success")
+    return redirect("/settings/users")
+
+
+@app.post("/settings/users/grants")
+def users_grants():
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    lang = _lang()
+    username = (request.form.get("username") or "").strip()
+    if not settings.set_grants(username, request.form.getlist("grant_profile")):
+        flash(i18n.t("user_create_failed", lang), "error")
+    else:
+        flash(i18n.t("grants_saved", lang,
                      name=settings._normalise_username(username)), "success")
     return redirect("/settings/users")
 
@@ -1260,8 +1329,13 @@ def _pair_labels(values: dict, options: dict) -> dict:
     return values
 
 
-def _form_fields(payload: dict, options: dict | None = None) -> dict:
-    """The field table as grouped form items, with secrets reduced to a hint."""
+def _form_fields(payload: dict, options: dict | None = None,
+                 hide_secrets: bool = False) -> dict:
+    """The field table as grouped form items, with secrets reduced to a hint.
+
+    `hide_secrets` drops even the hint. Being lent a profile is not being given
+    the credential, and a "set · ••••1234" still confirms whose token is in use.
+    """
     groups = {"connection": [], "auth": [], "tuning": [], "advanced": []}
     for f in settings.FIELDS:
         if f.get("hidden"):
@@ -1276,7 +1350,7 @@ def _form_fields(payload: dict, options: dict | None = None) -> dict:
         if f["kind"] == "secret":
             # Never a value: the real token must not appear in the page source.
             item["value"] = ""
-            item["secret_hint"] = settings.secret_hint(raw)
+            item["secret_hint"] = "" if hide_secrets else settings.secret_hint(raw)
             item["clear_name"] = f"clear_{f['key']}"
         elif f["kind"] == "bool":
             item["value"] = "on"
@@ -1355,8 +1429,15 @@ def settings_page():
         target["name"] = draft.get("name") or ""
     else:
         wanted = (request.args.get("edit") or "").strip()
-        target = (settings.get_profile(int(wanted), owner=username)
-                  if wanted.isdigit() else None)
+        if wanted.isdigit():
+            # `owner=username` already refuses somebody else's profile, but a
+            # granted one is visible, so the ownership check has to be explicit.
+            if settings.may_edit_profile(username, int(wanted)):
+                target = settings.get_profile(int(wanted), owner=username)
+            else:
+                return _denied()
+        else:
+            target = None
         if not request.args.get("new"):
             target = target or active
     # A person with no profile of their own gets the connection block and the
@@ -1382,8 +1463,16 @@ def settings_page():
     options = _id_options(cl)
     # Only hinted copies reach the template: a stray {{ p.payload.API_TOKEN }} in
     # some future edit would otherwise paste the operator's token into the HTML.
-    public = [{**p, "payload": settings.public_payload(p)}
-              for p in settings.list_profiles(username)]
+    # A plain `user` has nothing of their own, so the assigned profiles are
+    # what they work against. They are shown, but never with their secrets and
+    # never as something they could edit.
+    public = []
+    for prof in settings.list_profiles(username):
+        entry = {**prof, "payload": settings.public_payload(prof),
+                 "granted": prof.get("owner") not in (None, username)}
+        if entry["granted"]:
+            entry["payload"] = _without_secrets(entry["payload"])
+        public.append(entry)
     view = dict(target or {})
     view["payload"] = settings.public_payload(view) if target else {}
     active_payload = (active or {}).get("payload") or {}
@@ -1394,7 +1483,10 @@ def settings_page():
                            active=bool(active and active.get("id") ==
                                        (target or {}).get("id")),
                            target=view or None,
-                           fields=_form_fields(merged, options),
+                           fields=_form_fields(merged, options,
+                                               hide_secrets=bool(
+                                                   (active or target or {}).get(
+                                                       "granted"))),
                            options_found=bool(options),
                            derived=settings.derived(merged),
                            cfg=_request_config())
@@ -1424,6 +1516,8 @@ def _draft_id() -> int | None:
 def settings_save():
     lang = _lang()
     username = current_user()
+    if not settings.can_manage_profiles(username):
+        return _denied()
     name = (request.form.get("profile_name") or "").strip()
     pid = _draft_id()
     cl = client_for(username)
@@ -1473,13 +1567,28 @@ def settings_activate():
 @app.post("/settings/delete")
 def settings_delete():
     username = current_user()
+    if not settings.can_delete_profiles(username):
+        return _denied("delete_not_permitted")
     pid = _draft_id()
     if pid and settings.delete_profile(pid, owner=username):
+        # Anyone it was granted to loses it as well, or they would keep pointing
+        # at a profile that no longer exists.
+        _drop_grants_for(pid)
         invalidate_user_client(username)
         flash(i18n.t("set_deleted", _lang()), "success")
     else:
         flash(i18n.t("set_no_profile", _lang()), "error")
     return redirect("/settings")
+
+
+def _drop_grants_for(profile_id: int) -> None:
+    """Remove every grant of a profile that no longer exists.
+
+    `profile_grants` lives in the settings store, alongside the profiles.
+    """
+    with settings._connect() as conn:
+        conn.execute("DELETE FROM profile_grants WHERE profile_id=?",
+                     (profile_id,))
 
 
 @app.post("/settings/test")

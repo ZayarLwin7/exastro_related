@@ -32,6 +32,12 @@
   .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
   .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
   .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  .grantbox{display:flex;flex-wrap:wrap;gap:8px 18px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(var(--field-rgb),.2)}
+  .grant{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--txt);cursor:pointer}
+  .grantrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
+  .grantwho{min-width:130px;font-weight:650;font-size:13px}
+  .grantrow .grantbox{flex:1}
+  .rolesel{width:auto;padding:6px 10px;font-size:12px;display:inline-block}
   .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
   .top a{color:var(--mut);text-decoration:none;font-size:13px}
 </style>
@@ -69,6 +75,25 @@
         <label for="password_confirm">{{ t('confirm_password') }}</label>
         <input class="input" id="password_confirm" name="password_confirm" type="password" minlength="8" autocomplete="new-password" required>
       </div>
+      <div class="field">
+        <label for="role">{{ t('role_label') }}</label>
+        <select class="input" id="role" name="role">
+          {% for r in role_choices %}
+          <option value="{{ r.code }}" {% if r.code == 'user' %}selected{% endif %}>{{ r.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if grantable %}
+      <div class="field">
+        <label>{{ t('assigned_profiles') }}</label>
+        <div class="grantbox">
+          {% for pr in grantable %}
+          <label class="grant"><input type="checkbox" name="grant_profile" value="{{ pr.id }}"> {{ pr.label }}</label>
+          {% endfor %}
+        </div>
+        <p class="lede" style="margin:8px 0 0">{{ t('assigned_profiles_hint') }}</p>
+      </div>
+      {% endif %}
       <button class="btn" type="submit">{{ t('users_new') }}</button>
     </form>
   </div>
@@ -87,6 +112,15 @@
             {% if u.username == me %}<span class="you">{{ t('users_you') }}</span>{% endif %}
           </td>
           <td style="text-align:right">
+            <form method="post" action="/settings/users/role" style="display:inline">
+              <input type="hidden" name="username" value="{{ u.username }}">
+              <select class="input rolesel" name="role">
+                {% for r in role_choices %}
+                <option value="{{ r.code }}" {% if r.code == u.role %}selected{% endif %}>{{ r.label }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn sm" type="submit">{{ t('save') }}</button>
+            </form>
             {% if u.username != me %}
             <form method="post" action="/settings/users/delete" style="display:inline">
               <input type="hidden" name="username" value="{{ u.username }}">
@@ -98,6 +132,23 @@
         {% endfor %}
       </tbody>
     </table>
+    <h2 style="margin-top:22px">{{ t('assigned_profiles') }}</h2>
+    <p class="lede">{{ t('assigned_profiles_hint') }}</p>
+    {% for u in users %}
+    <form method="post" action="/settings/users/grants" class="grantrow">
+      <input type="hidden" name="username" value="{{ u.username }}">
+      <div class="grantwho">{{ u.username }}</div>
+      <div class="grantbox">
+        {% for pr in grantable %}
+        <label class="grant"><input type="checkbox" name="grant_profile" value="{{ pr.id }}"
+          {% if pr.id in u.granted %}checked{% endif %}> {{ pr.label }}</label>
+        {% else %}
+        <span class="dim">{{ t('users_none') }}</span>
+        {% endfor %}
+      </div>
+      <button class="btn sm" type="submit">{{ t('save') }}</button>
+    </form>
+    {% endfor %}
     {% else %}
     <p class="lede">{{ t('users_none') }}</p>
     {% endif %}
