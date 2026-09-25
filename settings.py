@@ -42,6 +42,12 @@ SETTINGS_DB = os.getenv("EXA_SETTINGS_DB", "settings.db")
 # in a rendered page or a JSON response — only `secret_hint()` about them.
 SECRET_FIELDS = ("API_TOKEN", "PASSWORD")
 
+# The two groups that identify *this* connection and *this* person's credentials.
+# A new account must be asked for these; the rest of the table is shared
+# configuration (ITA menu names, timeouts, ids) that a fresh install already
+# knows and that nobody should have to retype per person.
+PRIVATE_GROUPS = ("connection", "auth")
+
 # ---------------------------------------------------------------------------
 # The field table: storage, validation and the form all read this.
 # group: connection | auth | tuning | advanced

@@ -1359,17 +1359,23 @@ def settings_page():
                   if wanted.isdigit() else None)
         if not request.args.get("new"):
             target = target or active
-    # A person with no profile of their own gets a blank form -- both the
-    # connection block and the credentials. Seeding it from env_defaults() would
-    # pre-fill the install's gateway, org, workspace and a "set · ••••1234" token
-    # hint: the founder's configuration, shown to a colleague who was only just
-    # added, and one keystroke from being saved into their profile.
+    # A person with no profile of their own gets the connection block and the
+    # credentials blank. Everything else keeps the install's defaults: the ITA
+    # menu names, timeouts and the rest are not secrets and not the founder's
+    # property, so making every new account retype them would be pure friction.
+    # Seeding the two private groups from env_defaults() is what showed a
+    # colleague the founder's gateway and a "set · ••••1234" token hint.
+    shared = settings.env_defaults()
     if active is None and target is None:
-        base = {f["key"]: (False if f["kind"] == "bool" else "")
-                for f in settings.FIELDS}
+        base = {}
+        for field in settings.FIELDS:
+            blank = field["group"] in settings.PRIVATE_GROUPS
+            base[field["key"]] = "" if blank else shared[field["key"]]
+        # CLIENT_ID is derived from the org, so it is always left blank for the
+        # form to fill in from whatever organisation this person enters.
         base["CLIENT_ID"] = ""
     else:
-        base = settings.env_defaults()
+        base = shared
     merged = {**base, **((target or {}).get("payload") or {}),
               **((draft or {}).get("values") or {})}
     cl = client_for(username)

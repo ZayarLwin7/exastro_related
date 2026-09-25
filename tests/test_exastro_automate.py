@@ -14,6 +14,7 @@ import json
 import os
 import pathlib
 import re
+import html
 import inspect
 import shutil
 import subprocess
@@ -4761,42 +4762,103 @@ def test_a_new_user_cannot_borrow_the_installers_client(store):
 
 
 def _form_value(body: str, key: str) -> str:
-    m = re.search(r'id="field_%s"[^>]*value="([^"]*)"' % key, body)
-    return m.group(1) if m else ""
+    """What the form would submit for this field.
+
+    A checkbox has no useful `value`; its state is the `checked` attribute, so
+    reading it as text would make every boolean look unset.
+    """
+    m = re.search(r'<input[^>]*id="field_%s"[^>]*>' % key, body)
+    if not m:
+        return ""
+    tag = m.group(0)
+    if 'type="checkbox"' in tag:
+        return "on" if "checked" in tag else ""
+    v = re.search(r'value="([^"]*)"', tag)
+    return v.group(1) if v else ""
 
 
-def test_a_new_account_gets_a_blank_settings_form(store):
-    """Connection *and* credentials must start empty for a new account.
+def test_a_new_account_gets_a_blank_connection_and_credentials(store):
+    """Only the two private groups start empty for a new account.
 
-    The form used to be seeded from `env_defaults()`, which reads the
-    process-wide config -- so a colleague who had just been added saw the
-    founder's gateway, org, workspace and a "set · ••••1234" token hint, one
-    keystroke from being saved into their own profile.
+    The form used to be seeded entirely from `env_defaults()`, so a colleague
+    who had just been added saw the founder's gateway, org, workspace and a
+    "set · ••••1234" token hint already filled in -- one keystroke from being
+    saved into their own profile. Blanking *everything* was the wrong cure: the
+    menu names and timeouts are shared configuration, not somebody's property.
     """
     settings.create_user("founder", "founder-password")
     settings.adopt_orphans("founder")
     fp = settings.save_profile("founder-prod",
                                {"GATEWAY_URL": "http://founder-only:4040",
                                 "ORG_ID": "founders", "WORKSPACE_ID": "prod",
+                                "KEYCLOAK_URL": "http://kc:8080",
                                 "API_TOKEN": "FOUNDERTOKEN1234",
                                 "USER": "svc_founder",
-                                "PASSWORD": "founder-secret",
-                                "EXEC_ENV": "prod-env"},
+                                "PASSWORD": "founder-secret"},
                                owner="founder")
     settings.activate_profile(fp, owner="founder")
     settings.create_user("newcomer", "newcomer-password")
 
     c = _login(appmod.app.test_client(), "newcomer")
     body = c.get("/settings?new=1").get_data(as_text=True)
-    for field in ("GATEWAY_URL", "ORG_ID", "WORKSPACE_ID", "USER", "PASSWORD",
-                  "EXEC_ENV", "API_TOKEN"):
-        assert _form_value(body, field) == "", \
-            f"{field} was pre-filled for an account with no profile of its own"
+    for field in settings.FIELDS:
+        if field["group"] not in settings.PRIVATE_GROUPS:
+            continue
+        if field["key"] == "CLIENT_ID":
+            continue                     # derived from the org, always blank
+        assert _form_value(body, field["key"]) == "", (
+            f"{field['key']} is {field['group']} and must start empty for a "
+            f"new account, but was pre-filled")
     assert "••••" not in body, "a token hint for somebody else's token leaked"
     assert "FOUNDERTOKEN1234" not in body
     assert "founder-only" not in body
-    assert "founder-prod" not in body, "the founder's profile is not on this page"
+    assert "founder-prod" not in body
 
+
+def test_a_new_account_keeps_the_shared_settings_when_saving(store, monkeypatch):
+    """Connection and credentials are private; the rest is shared setup.
+
+    Checked on what gets *stored*, not on the rendered markup: the form renders
+    these fields as a mix of inputs, checkboxes and selects, and what matters is
+    that a new account does not have to retype (or lose) the shared ones.
+    """
+    settings.create_user("founder", "founder-password")
+    settings.adopt_orphans("founder")
+    settings.create_user("newcomer", "newcomer-password")
+    monkeypatch.setattr(cfg, "MOCK", True)
+
+    c = _login(appmod.app.test_client(), "newcomer")
+    r = c.post("/settings/save", data={
+        "profile_name": "mine",
+        "field_GATEWAY_URL": "http://my-ita:4040",
+        "field_ORG_ID": "myorg", "field_WORKSPACE_ID": "myws",
+        "field_API_TOKEN": "MYTOKEN1234",
+        "field_activate": "on"}, follow_redirects=True)
+    assert r.status_code == 200
+    saved = [p for p in settings.list_profiles(owner="newcomer")
+             if p["name"] == "mine"]
+    assert saved, "the new account's profile was not saved"
+    payload = saved[0]["payload"]
+    assert payload["GATEWAY_URL"] == "http://my-ita:4040"
+    assert payload["API_TOKEN"] == "MYTOKEN1234"
+
+    # A blank field is omitted from the payload on purpose -- it means "use the
+    # install's default". So the guarantee is about what the account *resolves
+    # to*, which is what the client actually reads.
+    resolved = settings.effective(payload)
+    defaults = settings.env_defaults()
+    for field in settings.FIELDS:
+        if field["group"] in settings.PRIVATE_GROUPS:
+            continue
+        want = defaults.get(field["key"], "")
+        if field["kind"] == "bool":
+            assert bool(resolved.get(field["key"])) == bool(want), \
+                f"{field['key']} should resolve to the install's default"
+        elif str(want or "").strip():
+            assert str(resolved.get(field["key"])) == str(want), (
+                f"{field['key']} is shared configuration and should resolve to "
+                f"the install's default, not become blank")
+    assert resolved["VAR_TIMEOUT"] == 120
 
 def test_the_owner_still_sees_their_own_prefilled_form(store):
     """Blanking the new-account form must not blank everybody's."""

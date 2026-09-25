@@ -873,11 +873,18 @@ The first account to register is the exception: it adopts the pre-existing
 profiles and the `.env` seed, because on a fresh install that really is its own
 configuration.
 
-Their Settings form starts **completely empty** -- connection block and
-credentials both. It is not pre-filled from the install's values, and no token
+Only two parts of their Settings form start empty: the **connection block**
+(gateway, organization, workspace, Keycloak) and the **credentials** (API token,
+user, password). Neither is pre-filled from the install's values and no token
 hint is shown, because those are the founder's: showing them to a colleague who
 was added five minutes ago is one keystroke away from saving them into somebody
 else's profile.
+
+Everything else -- the ITA menu names, timeouts, orchestrator and the other
+advanced ids -- keeps the install's defaults, because that is shared
+configuration rather than somebody's property, and making every new account
+retype it would be pure friction. A field left blank is omitted from the stored
+profile and resolves to the install's default at run time.
 
 **Creation history is per person too.** Your history card lists the runs *you*
 started, and another person's run id returns 404 rather than rendering. Runs
