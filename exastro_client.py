@@ -220,12 +220,21 @@ class ExastroClient:
                     "grant_type": "password",
                     "username": self._v("USER"),
                     "password": self._v("PASSWORD"),
+                    # Required by the API contract: the password grant is
+                    # refused without a scope, and Exastro's proxy answers that
+                    # omission with a bare 500 rather than a useful error.
+                    # `offline_access` is rejected for the API client (it may not
+                    # mint offline tokens), so the scope is `openid` alone.
+                    "scope": "openid",
                 })
         elif has_password:
             self._exchange({
                 "grant_type": "password",
                 "username": self._v("USER"),
                 "password": self._v("PASSWORD"),
+                # see the note above: a scope is mandatory, and it is `openid`
+                # only -- the API client cannot be granted offline_access.
+                "scope": "openid",
             })
         else:
             raise ExastroError(
