@@ -191,15 +191,37 @@ class ExastroClient:
     # ---------------- auth ----------------
 
     def token(self) -> str:
-        """Return a valid access token, exchanging credentials if needed."""
+        """Return a valid access token, exchanging credentials if needed.
+
+        When both an API (refresh) token and username/password are configured,
+        the refresh token is tried first. If it has expired or been revoked the
+        exchange fails; rather than asking the operator to mint a new one, we
+        fall back to the password grant automatically so either credential pair
+        works without manual intervention. ServiceNow typically supplies only
+        username/password, while the Platform UI mints refresh tokens — both
+        paths must succeed on the same profile.
+        """
         if self._access and time.time() < self._access_exp - 60:
             return self._access
+        has_password = bool(self._v("USER") and self._v("PASSWORD"))
         if self._v("API_TOKEN"):
-            self._exchange({
-                "grant_type": "refresh_token",
-                "refresh_token": self._v("API_TOKEN"),
-            })
-        elif self._v("USER") and self._v("PASSWORD"):
+            try:
+                self._exchange({
+                    "grant_type": "refresh_token",
+                    "refresh_token": self._v("API_TOKEN"),
+                })
+            except ExastroError:
+                # An expired or revoked refresh token is not fatal when a
+                # password is also available: fall through to the password
+                # grant instead of surfacing a "mint a fresh token" error.
+                if not has_password:
+                    raise
+                self._exchange({
+                    "grant_type": "password",
+                    "username": self._v("USER"),
+                    "password": self._v("PASSWORD"),
+                })
+        elif has_password:
             self._exchange({
                 "grant_type": "password",
                 "username": self._v("USER"),
