@@ -52,12 +52,13 @@
   .rowbtns{display:flex;flex-direction:column;align-items:stretch;gap:7px;width:132px}
   form.inline{display:inline-flex;align-items:center;gap:7px}
   form.stack{display:flex;flex-direction:column;gap:7px}
-  .selrole{width:100%;padding:8px 30px 8px 11px;font-size:12.5px}
+  .selrole{width:100%;padding:8px 30px 8px 11px;font-size:12.5px;text-align:center}
+  .selrole option{text-align:center}
   .rowbtns .btn{width:100%;text-align:center}
 
   /* Profiles are picked as a visible list, not a multi-select: a native
      multi-select hides the choices behind one click and gives no context. */
-  .grantbox{display:flex;flex-direction:column;gap:2px;padding:5px;border:1px solid var(--line);border-radius:12px;background:rgba(var(--field-rgb),.18);max-height:190px;overflow:auto}
+  .grantbox{display:flex;flex-direction:column;gap:2px;padding:5px;border:1px solid var(--line);border-radius:12px;background:rgba(var(--field-rgb),.18)}
   .grant{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;font-size:13px;color:var(--txt);cursor:pointer}
   .grant:hover{background:rgba(var(--field-rgb),.35)}
   .grant input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer}
@@ -66,7 +67,7 @@
   .grantrow{display:grid;grid-template-columns:170px minmax(0,1fr) 132px;gap:14px;align-items:stretch;padding:11px 0;border-bottom:1px solid var(--line)}
   /* A fixed minimum height, so a row with two profiles does not look like a
      different kind of row from one with five. */
-  .grantrow .grantbox{min-height:78px;justify-content:center}
+  .grantrow .grantbox{min-height:78px;justify-content:center;overflow:visible}
   .grantrow:last-child{border-bottom:0}
   /* Two lines then clip. An account you cannot read is an account you cannot
      tell apart from the next one, which is the whole point of the column. */

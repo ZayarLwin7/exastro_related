@@ -5320,3 +5320,54 @@ def test_the_product_name_sits_beside_the_mark_on_sign_in(store):
     # and they are side by side, not stacked
     assert re.search(r"\.logorow\{[^}]*display:flex", body)
     assert "Exastro One Click Creator" in body
+
+
+def test_the_account_list_is_not_trapped_in_a_scrollbox(store):
+    """A scrollbar here hides which profiles exist, which is the only reason to
+    be on this page."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    rule = re.search(r"\.grantbox\{([^}]*)\}", body)
+    assert rule, "no rule for the profile box"
+    decl = rule.group(1)
+    assert "max-height" not in decl, f"the list is still rationed: {decl}"
+    assert "overflow:auto" not in decl and "overflow:scroll" not in decl
+
+
+def test_the_role_picker_centres_its_text(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    rule = re.search(r"\.selrole\{([^}]*)\}", body)
+    assert rule and "text-align:center" in rule.group(1), \
+        "the chosen role should sit in the middle of its control"
+
+
+def test_a_403_says_what_to_look_at(store):
+    """A bare 'permission error' cannot be told apart from a valid token that
+    belongs to someone else -- which is precisely the confusion it caused."""
+    import requests as _rq
+
+    class R:
+        status_code = 403
+        text = ""
+        def json(self):
+            return {"message": "permission error", "result": "403-00001"}
+
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    client = appmod.client_for("boss")
+    # A live token, so the stubbed response is the *API call* being refused --
+    # not the token exchange, which is a different failure with its own text.
+    client._access = "token"
+    client._access_exp = time.time() + 3600
+    client.session.request = lambda *a, **k: R()
+    with pytest.raises(ExastroError) as exc:
+        client._request("GET", "http://ita/api/dat/workspaces/ws/ita/create/define/")
+    text = str(exc.value)
+    assert "permission error" in text, "the server's own wording is kept"
+    assert "belong to you" in text
+    assert "_dat-api" in text, "it should name the client id this profile implies"

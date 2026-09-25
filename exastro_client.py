@@ -339,7 +339,24 @@ class ExastroClient:
             msg = ""
             if isinstance(body, dict):
                 msg = str(body.get("message") or body)
-            raise ExastroError(f"{method} {url} -> HTTP {resp.status_code}: {msg}")
+            hint = ""
+            if resp.status_code == 403:
+                # A bare "permission error" gave no way to tell a genuinely
+                # unauthorised account from a valid token belonging to someone
+                # else, which is exactly the confusion this class of failure
+                # causes. The client id is the usual culprit: `admin-cli` mints
+                # a role-less token that the ITA API accepts for sign-in and
+                # then refuses for the workspace.
+                hint = (
+                    " | The identity behind this call is not permitted here. "
+                    "Check that this profile's API token and username/password "
+                    "both belong to you -- a token left over from someone else "
+                    "is valid enough to sign in and still refused -- and that "
+                    f"the client id is _{self._v('ORG_ID')}-api (currently "
+                    f"{self._v('CLIENT_ID')!r})."
+                )
+            raise ExastroError(
+                f"{method} {url} -> HTTP {resp.status_code}: {msg}{hint}")
         return body
 
     def _result(self, body: dict | list) -> str:

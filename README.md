@@ -898,6 +898,14 @@ your own profile and nowhere else; timeouts, menu names and the rest are shared
 setup and still inherit from the install. A profile that never set a token
 resolves to no token, so the password grant actually runs.
 
+A **403 `permission error`** is now explained rather than merely reported. The
+usual cause is a valid credential belonging to somebody else: Exastro accepts
+it at sign-in and then refuses the workspace, which looks identical to an
+account that simply lacks access. The message says so, names the client id the
+profile implies, and shows what is actually configured. `admin-cli` is the
+client to watch -- it mints a role-less token that the ITA API accepts and then
+refuses; `_{org}-api` is the one the API expects.
+
 ### Roles
 
 | | admin | co-admin | user |
