@@ -75,11 +75,55 @@ app = Flask(__name__)
 app.secret_key = _secret_key()
 
 DB_PATH = "creations.db"
-# Order matters: the active profile rewrites `config`, and only then does a
-# client get built. With no settings.db at all, .env values stand.
+# The process-wide client remains as the boot default (and for old direct
+# callers). Request paths resolve a separate client from the logged-in user's
+# profile, so applying one user's active profile to `config` is no longer safe.
 settings.init_store()
-settings.apply_active()
 client = make_client()
+
+_user_clients: dict[str, tuple[tuple, object]] = {}
+
+
+def _user_profile_signature(username: str) -> tuple:
+    """Identity of the exact profile payload behind one user's cached client."""
+    username = str(username or "").strip().lower()
+    profile = settings.own_active_profile(username) or {}
+    payload = profile.get("payload") or {}
+    fingerprint = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                             default=str)
+    return (os.path.abspath(settings.SETTINGS_DB), profile.get("id"),
+            profile.get("updated_at"), cfg.MOCK, fingerprint)
+
+
+def client_for(username: str):
+    """Cached ExastroClient for one user, built from THEIR active profile."""
+    username = str(username or "").strip().lower()
+    if not username:
+        return client
+    signature = _user_profile_signature(username)
+    cached = _user_clients.get(username)
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    profile_payload = (settings.own_active_profile(username) or {}).get("payload") or {}
+    effective = settings.effective(profile_payload)
+    # Derived URLs win over a blank/raw field, but every effective value stays
+    # on this instance. settings.apply() is deliberately not called here.
+    overrides = {**effective, **settings.derived(effective)}
+    if cfg.MOCK:
+        built = make_client()
+        # Keep the target identity on the stand-in too, so diagnostics and
+        # callers can verify the same per-user resolution in mock mode.
+        built._over = dict(overrides)
+    else:
+        built = ExastroClient(overrides)
+    _user_clients[username] = (signature, built)
+    return built
+
+
+def invalidate_user_client(username: str) -> None:
+    username = str(username or "").strip().lower()
+    _user_clients.pop(username, None)
+    _user_catalogues.pop(username, None)
 
 # The interface language is a browser preference, not a server setting: a cookie
 # keeps it across the three pages and a reload. It is deliberately unrelated to
@@ -91,6 +135,41 @@ LANG_AGE = 60 * 60 * 24 * 365
 
 def current_lang() -> str:
     return i18n.normalize(request.cookies.get(LANG_COOKIE) or cfg.UI_LANG)
+
+
+def current_user() -> str:
+    """The normalized username in this session, or an empty string."""
+    try:
+        return str(session.get("user") or "").strip().lower()
+    except RuntimeError:                         # usable from scripts/tests
+        return ""
+
+
+def _request_config() -> dict:
+    """Non-secret config as the current user sees it, without touching cfg."""
+    described = cfg.describe()
+    username = current_user()
+    if not username:
+        return described
+    payload = (settings.own_active_profile(username) or {}).get("payload") or {}
+    values = settings.effective(payload)
+    described.update({
+        "gateway": values.get("GATEWAY_URL", ""),
+        "org": values.get("ORG_ID", ""),
+        "workspace": values.get("WORKSPACE_ID", ""),
+        "api_base": values.get("API_BASE", ""),
+        "movement_menu": values.get("MOVEMENT_MENU", ""),
+        "role_menu": values.get("ROLE_MENU", ""),
+        "role_link_menu": values.get("ROLE_LINK_MENU", ""),
+        "file_link_menu": values.get("FILE_LINK_MENU", ""),
+        "subst_menu": values.get("SUBST_MENU", ""),
+        "orchestrator": values.get("ORCHESTRATOR", ""),
+        "exec_env": values.get("EXEC_ENV", ""),
+        "var_timeout": values.get("VAR_TIMEOUT", ""),
+        "credentials_set": bool(values.get("API_TOKEN")
+                                or (values.get("USER") and values.get("PASSWORD"))),
+    })
+    return described
 
 
 def _theme() -> str:
@@ -138,6 +217,24 @@ def _back_target() -> str:
 # Screens that cannot do anything without an Exastro target. The history and its
 # detail pages read only the local database, so they stay usable either way.
 ITA_NEEDED = ("/", "/create", "/api/roles")
+PUBLIC_PATHS = ("/login", "/register", "/favicon.ico", "/healthz")
+
+
+@app.before_request
+def require_login():
+    """Require an app user everywhere except the deliberately public surface."""
+    if (request.path in PUBLIC_PATHS
+            or request.path.startswith("/static/")):
+        return None
+    username = current_user()
+    if username and settings.get_user(username) is not None:
+        return None
+    if username:
+        session.pop("user", None)
+    message = i18n.t("login_required", _lang())
+    if request.path.startswith("/api/"):
+        return jsonify({"error": message}), 401
+    return redirect("/login")
 
 
 @app.before_request
@@ -150,9 +247,12 @@ def require_target():
     """
     if cfg.MOCK or _unlocked() or request.path not in ITA_NEEDED:
         return None
-    if settings.is_configured():
+    username = current_user()
+    payload = (settings.own_active_profile(username) or {}).get("payload") or {}
+    if settings.is_configured(payload):
         return None
-    missing = " / ".join(i18n.t(k, _lang()) for k in settings.missing_labels())
+    missing = " / ".join(i18n.t(k, _lang())
+                         for k in settings.missing_labels(payload))
     message = i18n.t("setup_needed", _lang(), fields=missing)
     if request.path.startswith("/api/"):
         return jsonify({"error": message}), 409
@@ -175,15 +275,20 @@ def inject_i18n():
         """
         return i18n.t(key, lang, **(args or {}))
 
-    active = settings.active_profile() or {}
+    username = current_user()
+    active = settings.own_active_profile(username) or {}
+    profile_values = settings.effective(active.get("payload") or {})
     return {
         "lang": lang,
         "t": t,
         "tf": tf,
-        # The header shows where writes are currently going: pointing the tool
-        # at another environment must never be invisible.
+        "current_user": username,
+        "current_user_is_admin": settings.is_admin(username) if username else False,
+        "auth_enabled": settings.user_count() > 0,
+        # The header shows where this user's writes are going: pointing one
+        # person's profile at another environment must never be invisible.
         "profile_name": active.get("name") or "",
-        "profile_workspace": cfg.WORKSPACE_ID,
+        "profile_workspace": profile_values.get("WORKSPACE_ID", ""),
         "settings_unlocked": _unlocked(),
         "theme": _theme(),
         "themes": [{"code": c, "name": i18n.t("theme_" + c, lang),
@@ -223,11 +328,12 @@ def set_language(code):
 # page load is instant without going stale when a Git sync adds a role.
 _CATALOGUE_TTL = 30.0
 _catalogue: dict = {"at": 0.0, "data": None}
+_user_catalogues: dict[str, tuple[tuple, float, dict]] = {}
 
 
 @app.context_processor
 def inject_cfg():
-    return {"cfg": cfg.describe()}
+    return {"cfg": _request_config()}
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +583,29 @@ def infer_types(params: dict) -> dict:
     return out
 
 
-def catalogue(force: bool = False, cl=None) -> dict:
-    """Role packages + roles + execution environments, lightly cached."""
+def catalogue(force: bool = False, cl=None, username: str | None = None) -> dict:
+    """Role packages + roles + execution environments, cached per user."""
+    if username is None:
+        username = current_user() or None
+    username = str(username).strip().lower() if username else None
+    if username:
+        signature = _user_profile_signature(username)
+        cl = client_for(username) if cl is None else cl
+        cached = _user_catalogues.get(username)
+        now = time.time()
+        if (not force and cached is not None and cached[0] == signature
+                and now - cached[1] < _CATALOGUE_TTL):
+            return cached[2]
+        payload = (settings.own_active_profile(username) or {}).get("payload") or {}
+        values = settings.effective(payload)
+        data = {
+            "packages": cl.role_choices(),
+            "environments": cl.execution_environments(),
+            "default_env": values.get("EXEC_ENV", ""),
+        }
+        _user_catalogues[username] = (signature, now, data)
+        return data
+
     cl = client if cl is None else cl
     now = time.time()
     if not force and _catalogue["data"] and now - _catalogue["at"] < _CATALOGUE_TTL:
@@ -494,14 +621,11 @@ def catalogue(force: bool = False, cl=None) -> dict:
 
 
 def rebuild_client() -> None:
-    """Point the app at whatever `config` now says, and drop cached reads.
-
-    Requests already in flight are unaffected: each view binds its own `cl` and
-    passes it down, so saving Settings halfway through a creation cannot move
-    that creation to another environment.
-    """
+    """Rebuild the boot client and drop every target-derived cached read."""
     global client
     client = make_client()
+    _user_clients.clear()
+    _user_catalogues.clear()
     _catalogue["at"] = 0.0
     _catalogue["data"] = None
 
@@ -562,9 +686,9 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
     default and deliberately last: an Operation is a real scheduled thing, and a
     run that made one nobody asked for cannot be undone quietly.
 
-    `cl` lets the caller pin the client for the whole sequence: a Settings save
-    replaces the module-level client, and a run in flight must not follow it to
-    another environment halfway through.
+    `cl` lets the caller pin the client's owner/profile for the whole sequence:
+    the route resolves it once, and a Settings save must not move an in-flight
+    creation to another environment halfway through.
     """
     cl = client if cl is None else cl
     steps: list[dict] = []
@@ -653,7 +777,8 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
             row = cl._find_movement(movement_name)
             mid = ""
             if row:
-                mid = str(row.get("movement_id") or cl._pk(row, cfg.MOVEMENT_MENU) or "")
+                menu = cl._v("MOVEMENT_MENU") if hasattr(cl, "_v") else cfg.MOVEMENT_MENU
+                mid = str(row.get("movement_id") or cl._pk(row, menu) or "")
             if not mid:
                 raise ExastroError(
                     f"movement '{movement_name}' was created but its id "
@@ -670,6 +795,127 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
 # routes
 # ---------------------------------------------------------------------------
 
+@app.get("/login")
+@app.post("/login")
+def login():
+    """Log in to the app; an empty user store turns this page into registration."""
+    username = current_user()
+    if username and settings.get_user(username) is not None:
+        return redirect("/")
+    first_run = settings.user_count() == 0
+    if request.method == "POST" and not first_run:
+        candidate = request.form.get("username") or ""
+        if settings.authenticate(candidate, request.form.get("password") or ""):
+            session.clear()
+            session["user"] = candidate.strip().lower()
+            flash(i18n.t("welcome", _lang(), name=session["user"]), "success")
+            return redirect("/")
+        flash(i18n.t("wrong_credentials", _lang()), "error")
+    return render_template("login.html", first_run=first_run)
+
+
+@app.post("/register")
+def register():
+    """First-run registration; later accounts are deliberately not self-service."""
+    if settings.user_count():
+        flash(i18n.t("registration_closed", _lang()), "error")
+        return redirect("/login")
+    username = request.form.get("username") or ""
+    password = request.form.get("password") or ""
+    confirm = (request.form.get("password_confirm")
+               or request.form.get("confirm")
+               or request.form.get("password_confirmation") or "")
+    if not password:
+        flash(i18n.t("password_required", _lang()), "error")
+    elif password != confirm:
+        flash(i18n.t("password_mismatch", _lang()), "error")
+    elif not settings.create_user(username, password):
+        flash(i18n.t("invalid_registration", _lang()), "error")
+    else:
+        username = username.strip().lower()
+        settings.adopt_orphans(username)
+        session.clear()
+        session["user"] = username
+        flash(i18n.t("welcome", _lang(), name=username), "success")
+        return redirect("/")
+    return redirect("/login")
+
+
+@app.get("/logout")
+@app.post("/logout")
+def logout():
+    session.clear()
+    flash(i18n.t("logged_out", _lang()), "success")
+    return redirect("/login")
+
+
+def _require_admin():
+    """Admin-only pages: handing out accounts is a privilege, not a setting.
+
+    Returns None when the caller may proceed, or a response to send instead.
+    """
+    if not settings.is_admin(current_user()):
+        flash(i18n.t("admin_only", _lang()), "error")
+        return redirect("/settings")
+    return None
+
+
+@app.get("/settings/users")
+def users_page():
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    if _settings_locked():
+        return _locked_redirect()
+    return render_template("users.html", users=settings.list_users(),
+                           me=current_user(),
+                           minutes=int(settings.UNLOCK_TTL // 60))
+
+
+@app.post("/settings/users/create")
+def users_create():
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    if _settings_locked():
+        return _locked_redirect()
+    lang = _lang()
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    confirm = request.form.get("password_confirm") or ""
+    if password != confirm:
+        flash(i18n.t("password_mismatch", lang), "error")
+    elif len(password) < 8:
+        # A login password is a long-lived secret guarding that person's ITA
+        # token; 8 is a floor, not a suggestion.
+        flash(i18n.t("user_password_short", lang), "error")
+    elif not settings.create_user(username, password):
+        flash(i18n.t("user_create_failed", lang), "error")
+    else:
+        flash(i18n.t("user_created", lang,
+                     name=settings._normalise_username(username)), "success")
+    return redirect("/settings/users")
+
+
+@app.post("/settings/users/delete")
+def users_delete():
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    if _settings_locked():
+        return _locked_redirect()
+    lang = _lang()
+    username = (request.form.get("username") or "").strip()
+    if settings._normalise_username(username) == current_user():
+        flash(i18n.t("user_cannot_delete_self", lang), "error")
+    elif settings.delete_user(username):
+        _user_clients.pop(settings._normalise_username(username), None)
+        flash(i18n.t("user_deleted", lang, name=username.lower()), "success")
+    else:
+        flash(i18n.t("user_delete_failed", lang), "error")
+    return redirect("/settings/users")
+
+
 @app.get("/")
 def index():
     cat = None
@@ -682,7 +928,7 @@ def index():
     args = request.args
     return render_template("index.html",
                            creations=paginate_creations(_page_arg(args)),
-                           cfg=cfg.describe(), catalogue=cat,
+                           cfg=_request_config(), catalogue=cat,
                            movement_name=args.get("movement_name", ""),
                            role_name=args.get("role_name", ""),
                            sheet_name=args.get("sheet_name", ""),
@@ -702,9 +948,10 @@ def api_host_groups():
     ITA will actually store: `[HG]` is a config constant, and a second place that
     knows that spelling is a second place that can disagree with the first.
     """
+    cl = client_for(current_user())
     try:
-        groups = [{"name": g["name"], "hosts": client.hosts_in_group(g["name"])}
-                  for g in client.host_groups()]
+        groups = [{"name": g["name"], "hosts": cl.hosts_in_group(g["name"])}
+                  for g in cl.host_groups()]
     except Exception as exc:                       # noqa: BLE001 - report, don't 500
         return jsonify({"groups": [], "error": str(exc)}), 502
     return jsonify({"groups": groups, "prefix": cfg.HOST_GROUP_PREFIX})
@@ -722,8 +969,9 @@ def api_sheet_columns(name: str):
     name = (name or "").strip()
     if not name:
         return jsonify({"state": "absent", "columns": {}})
+    cl = client_for(current_user())
     try:
-        state, cols = client.sheet_column_state(name)
+        state, cols = cl.sheet_column_state(name)
     except Exception as exc:                 # a transport error is an answer too
         return jsonify({"state": "error", "columns": {},
                         "error": str(exc)}), 502
@@ -741,6 +989,8 @@ def api_role_choices():
 
 @app.post("/create")
 def create():
+    username = current_user()
+    cl = client_for(username)
     movement_name = (request.form.get("movement_name") or "").strip()
     sheet_name = (request.form.get("sheet_name") or movement_name).strip()
     role_name = compose_role_value(request.form.get("role_package"),
@@ -784,7 +1034,7 @@ def create():
             errors.append(i18n.t("err_no_host_group", lang))
         else:
             try:
-                offered = [g["name"] for g in client.host_groups()]
+                offered = [g["name"] for g in cl.host_groups()]
             except ExastroError as exc:
                 offered = []
                 errors.append(str(exc))
@@ -807,22 +1057,21 @@ def create():
         for e in errors:
             flash(e, "error")
         try:
-            cat = catalogue()
+            cat = catalogue(cl=cl, username=username)
         except ExastroError:
             cat = None
         return render_template("index.html",
                                creations=paginate_creations(
                                    _page_arg(request.args)),
-                               cfg=cfg.describe(), catalogue=cat,
+                               cfg=_request_config(), catalogue=cat,
                                movement_name=movement_name, role_name=role_name,
                                sheet_name=sheet_name, parameters=params_raw,
                                column_meta=meta_raw,
                                replace_flags=replace_flags, create_op=create_op,
                                host_group=host_group), 400
 
-    # Bind the client once for the whole request. A Settings save can replace
-    # the module-level client while this is running; this run keeps its target.
-    cl = client
+    # The client is bound once for the whole request, so a profile edit cannot
+    # move an in-flight creation to another user's target.
     if not execution_env and wait_vars:
         execution_env = cl.resolve_execution_env(execution_env)
 
@@ -853,11 +1102,20 @@ def create():
 
 @app.get("/healthz")
 def healthz():
-    active = settings.active_profile() or {}
-    return {"ok": True, "mock": cfg.MOCK,
-            "configured": settings.is_configured(),
-            "profile": active.get("name", "(.env defaults)"),
-            "gateway": cfg.GATEWAY_URL, "workspace": cfg.WORKSPACE_ID}
+    """A public liveness check, with target details only for its own user."""
+    username = current_user()
+    if username and settings.get_user(username) is not None:
+        active = settings.own_active_profile(username) or {}
+        payload = active.get("payload") or {}
+        values = settings.effective(payload)
+        return {"ok": True, "mock": cfg.MOCK,
+                "configured": settings.is_configured(payload),
+                "profile": active.get("name", "(.env defaults)"),
+                "gateway": values.get("GATEWAY_URL", ""),
+                "workspace": values.get("WORKSPACE_ID", "")}
+    # Do not turn this deliberately unauthenticated endpoint into a way to
+    # enumerate a user's profile or target.
+    return {"ok": True, "mock": cfg.MOCK}
 
 
 @app.get("/favicon.ico")
@@ -874,7 +1132,7 @@ def creation_detail(creation_id: int):
     row = get_creation(creation_id)
     if row is None:
         abort(404)
-    return render_template("detail.html", c=row, cfg=cfg.describe())
+    return render_template("detail.html", c=row, cfg=_request_config())
 
 
 def _page_arg(args) -> int:
@@ -926,6 +1184,10 @@ def _unlocked() -> bool:
         return False
 
 
+def _settings_locked() -> bool:
+    return settings.pin_configured() and not _unlocked()
+
+
 def _locked_redirect():
     flash(i18n.t("pin_required", _lang()), "error")
     return redirect("/settings")
@@ -937,7 +1199,9 @@ def _id_options(cl=None) -> dict:
     A failure is deliberately quiet here: the form still has to render, and a
     raw number is better than a blank one the operator cannot recognize.
     """
-    cl = client if cl is None else cl
+    if cl is None:
+        username = current_user()
+        cl = client_for(username) if username else client
     try:
         return cl.id_options() or {}
     except Exception:
@@ -1046,37 +1310,43 @@ def _validate(values: dict) -> list[str]:
 
 @app.get("/settings")
 def settings_page():
-    if not _unlocked():
+    username = current_user()
+    # Login is the primary gate. A PIN, when one already exists, remains an
+    # additional gate; a new install no longer forces a shared PIN on everyone.
+    if settings.pin_configured() and not _unlocked():
         return render_template("settings_pin.html",
-                               pin_set=settings.pin_configured(),
-                               cfg=cfg.describe())
-    active = settings.active_profile()
+                               pin_set=True,
+                               cfg=_request_config())
+    active = settings.own_active_profile(username)
     # A rejected save wins over everything else: the operator must see the form
     # they just filled in, including a pasted token, not the stored profile.
     draft = session.pop("settings_draft", None)
     if draft is not None:
         pid = draft.get("pid")
-        target = settings.get_profile(pid) if pid else None
+        target = settings.get_profile(pid, owner=username) if pid else None
         target = dict(target or {"id": None})
         target["name"] = draft.get("name") or ""
     else:
         wanted = (request.args.get("edit") or "").strip()
-        target = settings.get_profile(int(wanted)) if wanted.isdigit() else None
+        target = (settings.get_profile(int(wanted), owner=username)
+                  if wanted.isdigit() else None)
         if not request.args.get("new"):
             target = target or active
     merged = {**settings.env_defaults(), **((target or {}).get("payload") or {}),
               **((draft or {}).get("values") or {})}
-    options = _id_options()
+    cl = client_for(username)
+    options = _id_options(cl)
     # Only hinted copies reach the template: a stray {{ p.payload.API_TOKEN }} in
     # some future edit would otherwise paste the operator's token into the HTML.
     public = [{**p, "payload": settings.public_payload(p)}
-              for p in settings.list_profiles()]
+              for p in settings.list_profiles(username)]
     view = dict(target or {})
     view["payload"] = settings.public_payload(view) if target else {}
+    active_payload = (active or {}).get("payload") or {}
     return render_template("settings.html", profiles=public,
-                           setup_missing=[] if settings.is_configured()
+                           setup_missing=[] if settings.is_configured(active_payload)
                            else [i18n.t(k, _lang())
-                                 for k in settings.missing_labels()],
+                                 for k in settings.missing_labels(active_payload)],
                            active=bool(active and active.get("id") ==
                                        (target or {}).get("id")),
                            target=view or None,
@@ -1084,15 +1354,15 @@ def settings_page():
                            options_found=bool(options),
                            derived=settings.derived(merged),
                            minutes=int(settings.UNLOCK_TTL // 60),
-                           cfg=cfg.describe())
+                           cfg=_request_config())
 
 
 @app.post("/settings/unlock")
 def settings_unlock():
-    """Verify the PIN — or, on a store that has none yet, choose one.
+    """Verify the legacy PIN, or create one when the store has none yet.
 
-    First run is unavoidably open: whoever starts the app first sets the PIN.
-    After that it is required, and `EXA_SETTINGS_PIN` overrides the stored one.
+    App login is checked before this route. Once a PIN exists it remains a
+    second gate, and `EXA_SETTINGS_PIN` overrides the stored one.
     """
     lang = _lang()
     pin = request.form.get("pin") or ""
@@ -1147,12 +1417,14 @@ def _draft_id() -> int | None:
 
 @app.post("/settings/save")
 def settings_save():
-    if not _unlocked():
+    if _settings_locked():
         return _locked_redirect()
     lang = _lang()
+    username = current_user()
     name = (request.form.get("profile_name") or "").strip()
     pid = _draft_id()
-    values = _pair_labels(_form_values(), _id_options())
+    cl = client_for(username)
+    values = _pair_labels(_form_values(), _id_options(cl))
     errors = _validate(values)
     if not name:
         errors.append(i18n.t("set_name_required", lang))
@@ -1164,45 +1436,47 @@ def settings_save():
     session.pop("settings_draft", None)
     try:
         saved = settings.save_profile(name, values, pid,
-                                      clear=_clear_flags())
+                                      clear=_clear_flags(), owner=username)
     except (ValueError, KeyError, sqlite3.Error) as exc:
         flash(i18n.t("set_save_failed", lang, error=str(exc)), "error")
         return redirect("/settings")
     # A new profile is the one you just came here to reach, so it goes active;
     # editing an existing one leaves the current target alone unless asked.
     if request.form.get("activate") or pid is None:
-        settings.activate_profile(saved)
-        rebuild_client()
+        settings.activate_profile(saved, owner=username)
+        invalidate_user_client(username)
         flash(i18n.t("set_active_now", lang, name=name), "success")
     else:
+        # A non-active edit still changes the cached client's payload if that
+        # profile happens to be selected, so drop it and let the signature decide.
+        invalidate_user_client(username)
         flash(i18n.t("set_saved", lang, name=name), "success")
     return redirect("/settings")
 
 
 @app.post("/settings/activate")
 def settings_activate():
-    if not _unlocked():
+    if _settings_locked():
         return _locked_redirect()
+    username = current_user()
     pid = _draft_id()
-    profile = settings.activate_profile(pid) if pid else None
+    profile = settings.activate_profile(pid, owner=username) if pid else None
     if profile is None:
         flash(i18n.t("set_no_profile", _lang()), "error")
     else:
-        rebuild_client()
+        invalidate_user_client(username)
         flash(i18n.t("set_active_now", _lang(), name=profile["name"]), "success")
     return redirect("/settings")
 
 
 @app.post("/settings/delete")
 def settings_delete():
-    if not _unlocked():
+    if _settings_locked():
         return _locked_redirect()
+    username = current_user()
     pid = _draft_id()
-    if pid and settings.delete_profile(pid):
-        # Deleting the active profile leaves `config` pointing at a target that
-        # no longer exists, so re-apply whatever is active now.
-        settings.apply_active()
-        rebuild_client()
+    if pid and settings.delete_profile(pid, owner=username):
+        invalidate_user_client(username)
         flash(i18n.t("set_deleted", _lang()), "success")
     else:
         flash(i18n.t("set_no_profile", _lang()), "error")
@@ -1217,13 +1491,14 @@ def settings_test():
     operator is still configuring should be reported as text on the page, not as
     a 500 with a traceback.
     """
-    if not _unlocked():
+    if _settings_locked():
         return _locked_redirect()
     lang = _lang()
     pid = _draft_id()
     values = _form_values()
     if pid:
-        stored = (settings.get_profile(pid) or {}).get("payload") or {}
+        stored = (settings.get_profile(pid, owner=current_user()) or {}).get(
+            "payload") or {}
         for key in settings.SECRET_FIELDS:
             # A blank secret means "the stored one" — the browser never held it.
             if not values.get(key) and stored.get(key):

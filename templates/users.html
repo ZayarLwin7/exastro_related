@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('users_title') }} · {{ t('app_name') }}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="alternate icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{padding:34px 24px 80px}
+  .wrap{max-width:760px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 30px;margin-bottom:22px}
+  h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+  h2{font-size:15px;font-weight:700;margin-bottom:6px}
+  .lede{color:var(--mut);font-size:13px;line-height:1.6;margin-bottom:20px}
+  .field{margin-bottom:14px}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin-bottom:7px}
+  .input{width:100%;padding:11px 13px;border-radius:12px;background:rgba(var(--field-rgb),.28);border:1px solid var(--line);color:var(--txt);font:inherit;font-size:14px}
+  .input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.18)}
+  .btn{display:inline-block;border:0;border-radius:12px;padding:11px 18px;font:inherit;font-size:13.5px;font-weight:700;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--mut);font-weight:600}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:600px){.row2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{text-align:left;font-size:11.5px;font-weight:600;color:var(--mut);padding:0 10px 9px;border-bottom:1px solid var(--line)}
+  td{padding:11px 10px;border-bottom:1px solid var(--line)}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--acc-rgb),.14);color:var(--acc);margin-left:7px}
+  .you{color:var(--mut);font-size:11.5px;margin-left:6px}
+  .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
+  .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
+  .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .top a{color:var(--mut);text-decoration:none;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a href="/settings">&larr; {{ t('settings_title') }}</a>
+    <a href="/logout">{{ t('logout') }}</a>
+  </div>
+
+  <div class="card">
+    <h1>{{ t('users_title') }}</h1>
+    <p class="lede">{{ t('users_lede') }}</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <h2>{{ t('users_new') }}</h2>
+    <form method="post" action="/settings/users/create">
+      <div class="row2">
+        <div class="field">
+          <label for="username">{{ t('username') }}</label>
+          <input class="input" id="username" name="username" type="text" minlength="3" autocomplete="off" autocapitalize="none" required>
+        </div>
+        <div class="field">
+          <label for="password">{{ t('password') }}</label>
+          <input class="input" id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="password_confirm">{{ t('confirm_password') }}</label>
+        <input class="input" id="password_confirm" name="password_confirm" type="password" minlength="8" autocomplete="new-password" required>
+      </div>
+      <button class="btn" type="submit">{{ t('users_new') }}</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>{{ t('users_title') }}</h2>
+    {% if users %}
+    <table>
+      <thead><tr><th>{{ t('username') }}</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            {{ u.username }}
+            {% if u.is_admin %}<span class="badge">{{ t('users_admin_badge') }}</span>{% endif %}
+            {% if u.username == me %}<span class="you">{{ t('users_you') }}</span>{% endif %}
+          </td>
+          <td style="text-align:right">
+            {% if u.username != me %}
+            <form method="post" action="/settings/users/delete" style="display:inline">
+              <input type="hidden" name="username" value="{{ u.username }}">
+              <button class="btn ghost" type="submit">{{ t('user_delete') }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="lede">{{ t('users_none') }}</p>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

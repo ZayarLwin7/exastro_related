@@ -6,9 +6,9 @@ Model
 * A **profile** is one named target: gateway URL, org, workspace, credentials,
   execution environment, timeouts — and, under *Advanced*, the menu names and
   numeric ids that differ between ITA versions.
-* Exactly one profile is **active**. Selecting it rewrites the `config` module
-  constants and rebuilds the client, so the 60+ `cfg.` call sites in
-  `exastro_client.py` keep working untouched.
+* Each user owns a private set of profiles, with at most one active profile
+  for that user. Legacy callers that omit ``owner`` keep the original
+  process-wide behaviour, while the app resolves a per-user client for requests.
 * `.env` is only a **seed**: on first run an "Initial (.env)" profile is created
   from it. Afterwards the database wins, and `.env` is never rewritten — so a
   broken setting can always be undone by deleting `settings.db`.
@@ -198,9 +198,13 @@ def is_configured(values: dict | None = None) -> bool:
     return has_target(values) and has_credentials(values)
 
 
-def missing_labels() -> list[str]:
-    """Human names for what is still unset, for the first-run banner."""
-    v = effective()
+def missing_labels(values: dict | None = None) -> list[str]:
+    """Human names for what is still unset, for the first-run banner.
+
+    Passing one profile's values keeps a per-user setup check from reading the
+    process-wide active profile. The no-argument form retains its old meaning.
+    """
+    v = effective(values)
     out = [BY_KEY[k]["label"] for k in REQUIRED_FIELDS
            if not str(v.get(k) or "").strip()]
     if not has_credentials(v):
@@ -258,8 +262,33 @@ def init_store() -> None:
                 payload TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                owner TEXT
             )""")
+        # SQLite has no ADD COLUMN IF NOT EXISTS. Probe before every boot so an
+        # existing installation keeps all of its rows while gaining ownership.
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(profiles)")}
+        if "owner" not in columns:
+            conn.execute("ALTER TABLE profiles ADD COLUMN owner TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0
+            )""")
+        # An install created before user management has a users table without
+        # the column; add it in place rather than asking anyone to rebuild.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+        if "is_admin" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER"
+                         " NOT NULL DEFAULT 0")
+            if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+                # whoever registered first is the one who has to be trusted to
+                # hand out the next accounts
+                conn.execute("UPDATE users SET is_admin=1 WHERE id=("
+                             "SELECT MIN(id) FROM users)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meta(
                 key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
@@ -268,12 +297,132 @@ def init_store() -> None:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             seed = {"name": "Initial (.env)", "payload": env_defaults()}
             # Only seed credentials that .env actually supplied; an empty
-            # profile is honest about being unfinished.
+            # profile is honest about being unfinished. It remains an orphan
+            # until the first app user registers and explicitly adopts it.
             conn.execute(
                 "INSERT INTO profiles (name, payload, active, created_at,"
-                " updated_at) VALUES (?,?,1,?,?)",
+                " updated_at, owner) VALUES (?,?,1,?,?,NULL)",
                 (seed["name"], json.dumps(seed["payload"], ensure_ascii=False),
                  now, now))
+
+
+# ---------------------------------------------------------------------------
+# app users and profile ownership
+# ---------------------------------------------------------------------------
+
+def _normalise_username(username) -> str:
+    return str(username or "").strip().lower()
+
+
+def _hash_password(password: str, salt: str) -> str:
+    """PBKDF2-SHA256 with the same storage shape as the Settings PIN."""
+    return hashlib.pbkdf2_hmac("sha256", str(password or "").encode("utf-8"),
+                               bytes.fromhex(salt), 120_000).hex()
+
+
+def _row_user(row) -> dict | None:
+    if row is None:
+        return None
+    return {"id": row["id"], "username": row["username"],
+            "password_hash": row["password_hash"],
+            "created_at": row["created_at"]}
+
+
+def create_user(username: str, password: str, is_admin: bool = False) -> bool:
+    """Create an app user, or report that the name/password is unusable.
+
+    The first account on an install is always an admin: somebody has to be able
+    to hand out the rest, and on a fresh install that somebody is whoever
+    arrived first.
+    """
+    username = _normalise_username(username)
+    if (len(username) < 3 or any(ch.isspace() for ch in username)
+            or not str(password or "")):
+        return False
+    salt = secrets.token_hex(16)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with _connect() as conn:
+            first = not conn.execute(
+                "SELECT COUNT(*) FROM users").fetchone()[0]
+            conn.execute(
+                "INSERT INTO users (username, password_hash, created_at,"
+                " is_admin) VALUES (?,?,?,?)",
+                (username, f"{salt}${_hash_password(password, salt)}", now,
+                 1 if (is_admin or first) else 0))
+    except sqlite3.IntegrityError:
+        return False
+    return True
+
+
+def is_admin(username: str) -> bool:
+    """May this account hand out and revoke other accounts?"""
+    with _connect() as conn:
+        row = conn.execute("SELECT is_admin FROM users WHERE username=?",
+                           (_normalise_username(username),)).fetchone()
+    return bool(row and row["is_admin"])
+
+
+def list_users() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT username, created_at, is_admin FROM users"
+            " ORDER BY is_admin DESC, username").fetchall()
+    return [{"username": r["username"], "created_at": r["created_at"],
+             "is_admin": bool(r["is_admin"])} for r in rows]
+
+
+def delete_user(username: str) -> bool:
+    """Remove an account and every profile it owned.
+
+    Refuses the last admin, because an install nobody can add accounts to is
+    an install nobody can recover.
+    """
+    username = _normalise_username(username)
+    with _connect() as conn:
+        row = conn.execute("SELECT is_admin FROM users WHERE username=?",
+                           (username,)).fetchone()
+        if row is None:
+            return False
+        admins = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=1"
+                              ).fetchone()[0]
+        if row["is_admin"] and admins <= 1:
+            return False
+        conn.execute("DELETE FROM profiles WHERE owner=?", (username,))
+        conn.execute("DELETE FROM users WHERE username=?", (username,))
+    return True
+
+
+def authenticate(username: str, password: str) -> bool:
+    """Verify one app user without revealing whether just the name or the pair failed."""
+    username = _normalise_username(username)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE username=?",
+            (username,)).fetchone()
+    stored = str(row["password_hash"] or "") if row else ""
+    salt, _, digest = stored.partition("$")
+    try:
+        actual = _hash_password(password, salt)
+    except ValueError:
+        # Still perform the expensive primitive for an absent/corrupt row, then
+        # return the same answer without turning a bad salt into a 500.
+        _hash_password(password, "00" * 16)
+        return False
+    return secrets.compare_digest(actual, digest)
+
+
+def user_count() -> int:
+    with _connect() as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+
+
+def get_user(username: str) -> dict | None:
+    username = _normalise_username(username)
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username=?",
+                           (username,)).fetchone()
+    return _row_user(row)
 
 
 def _row_profile(row) -> dict:
@@ -281,44 +430,100 @@ def _row_profile(row) -> dict:
         payload = json.loads(row["payload"])
     except (TypeError, ValueError):
         payload = {}
+    owner = row["owner"] if "owner" in row.keys() else None
     return {"id": row["id"], "name": row["name"], "payload": payload,
             "active": bool(row["active"]), "created_at": row["created_at"],
-            "updated_at": row["updated_at"]}
+            "updated_at": row["updated_at"], "owner": owner or None}
 
 
-def list_profiles() -> list[dict]:
+def list_profiles(owner: str | None = None) -> list[dict]:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM profiles ORDER BY active DESC, name").fetchall()
+        if owner is None:
+            rows = conn.execute(
+                "SELECT * FROM profiles ORDER BY active DESC, name"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM profiles WHERE owner=? ORDER BY active DESC, name",
+                (_normalise_username(owner),)).fetchall()
     return [_row_profile(r) for r in rows]
 
 
-def get_profile(profile_id: int) -> dict | None:
+def get_profile(profile_id: int, owner: str | None = None) -> dict | None:
     with _connect() as conn:
-        row = conn.execute("SELECT * FROM profiles WHERE id = ?",
-                           (profile_id,)).fetchone()
+        if owner is None:
+            row = conn.execute("SELECT * FROM profiles WHERE id = ?",
+                               (profile_id,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM profiles WHERE id = ? AND owner = ?",
+                (profile_id, _normalise_username(owner))).fetchone()
     return _row_profile(row) if row else None
 
 
-def active_profile() -> dict | None:
+def active_profile(owner: str | None = None) -> dict | None:
     with _connect() as conn:
-        row = conn.execute("SELECT * FROM profiles WHERE active = 1 LIMIT 1"
-                           ).fetchone()
+        if owner is None:
+            row = conn.execute(
+                "SELECT * FROM profiles WHERE active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM profiles WHERE active = 1 AND owner = ?"
+                " ORDER BY id LIMIT 1",
+                (_normalise_username(owner),)).fetchone()
     return _row_profile(row) if row else None
+
+
+def own_active_profile(username: str) -> dict | None:
+    """The user's selected profile, or their first profile as a safe fallback."""
+    username = _normalise_username(username)
+    active = active_profile(username)
+    if active is not None:
+        return active
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM profiles WHERE owner=? ORDER BY id LIMIT 1",
+            (username,)).fetchone()
+    return _row_profile(row) if row else None
+
+
+def adopt_orphans(username: str) -> int:
+    """Give every pre-user profile to the first registered app user."""
+    username = _normalise_username(username)
+    if get_user(username) is None:
+        raise KeyError(f"no user {username}")
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE profiles SET owner=? WHERE owner IS NULL OR TRIM(owner)=''",
+            (username,))
+        return int(cur.rowcount)
 
 
 def save_profile(name: str, payload: dict, profile_id: int | None = None,
-                 clear=()) -> int:
-    """Insert or update, keeping stored secrets when the form left them blank."""
+                 clear=(), owner: str | None = None) -> int:
+    """Insert or update, keeping stored secrets when the form left them blank.
+
+    With an owner, every update is a two-column lookup: a guessed id owned by
+    somebody else is indistinguishable here from an id that does not exist.
+    """
     name = (name or "").strip()
     if not name:
         raise ValueError("profile name is required")
+    owner_name = _normalise_username(owner) if owner is not None else None
+    if owner is not None and not owner_name:
+        raise ValueError("profile owner is required")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     clean = {k: v for k, v in payload.items() if k in BY_KEY}
     with _connect() as conn:
         if profile_id:
-            row = conn.execute("SELECT payload FROM profiles WHERE id = ?",
-                               (profile_id,)).fetchone()
+            if owner_name is None:
+                row = conn.execute("SELECT payload FROM profiles WHERE id = ?",
+                                   (profile_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT payload FROM profiles WHERE id = ? AND owner = ?",
+                    (profile_id, owner_name)).fetchone()
             if row is None:
                 raise KeyError(f"no profile {profile_id}")
             stored = json.loads(row["payload"] or "{}")
@@ -330,45 +535,87 @@ def save_profile(name: str, payload: dict, profile_id: int | None = None,
                     clean[key] = ""            # the form asked to drop it
                 elif not str(clean.get(key) or "").strip():
                     clean[key] = stored.get(key, "")
-            conn.execute("UPDATE profiles SET name=?, payload=?, updated_at=?"
-                         " WHERE id=?",
-                         (name, json.dumps(clean, ensure_ascii=False), now,
-                          profile_id))
+            if owner_name is None:
+                conn.execute("UPDATE profiles SET name=?, payload=?, updated_at=?"
+                             " WHERE id=?",
+                             (name, json.dumps(clean, ensure_ascii=False), now,
+                              profile_id))
+            else:
+                conn.execute("UPDATE profiles SET name=?, payload=?, updated_at=?"
+                             " WHERE id=? AND owner=?",
+                             (name, json.dumps(clean, ensure_ascii=False), now,
+                              profile_id, owner_name))
             return profile_id
         conn.execute("INSERT INTO profiles (name, payload, active, created_at,"
-                     " updated_at) VALUES (?,?,0,?,?)",
-                     (name, json.dumps(clean, ensure_ascii=False), now, now))
+                     " updated_at, owner) VALUES (?,?,0,?,?,?)",
+                     (name, json.dumps(clean, ensure_ascii=False), now, now,
+                      owner_name))
         return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
 
-def delete_profile(profile_id: int) -> bool:
+def delete_profile(profile_id: int, owner: str | None = None) -> bool:
+    owner_name = _normalise_username(owner) if owner is not None else None
     with _connect() as conn:
-        cur = conn.execute("DELETE FROM profiles WHERE id=?", (profile_id,))
+        if owner_name is None:
+            cur = conn.execute("DELETE FROM profiles WHERE id=?", (profile_id,))
+        else:
+            cur = conn.execute(
+                "DELETE FROM profiles WHERE id=? AND owner=?",
+                (profile_id, owner_name))
         if not cur.rowcount:
             return False
-        still_active = conn.execute(
-            "SELECT id FROM profiles WHERE active=1").fetchone()
+        if owner_name is None:
+            still_active = conn.execute(
+                "SELECT id FROM profiles WHERE active=1").fetchone()
+        else:
+            still_active = conn.execute(
+                "SELECT id FROM profiles WHERE active=1 AND owner=?",
+                (owner_name,)).fetchone()
         if still_active is None:                     # never leave zero active
-            first = conn.execute("SELECT id FROM profiles ORDER BY id"
-                                 " LIMIT 1").fetchone()
+            if owner_name is None:
+                first = conn.execute("SELECT id FROM profiles ORDER BY id"
+                                     " LIMIT 1").fetchone()
+            else:
+                first = conn.execute(
+                    "SELECT id FROM profiles WHERE owner=? ORDER BY id LIMIT 1",
+                    (owner_name,)).fetchone()
             if first:
                 conn.execute("UPDATE profiles SET active=1 WHERE id=?",
                              (first["id"],))
     return True
 
 
-def activate_profile(profile_id: int) -> dict | None:
-    """Make one profile current. Returns it, or None if the id does not exist."""
+def activate_profile(profile_id: int, owner: str | None = None) -> dict | None:
+    """Make one profile current. Returns it, or None if the id is not visible.
+
+    Scoped activation changes only that user's marker and deliberately does not
+    call ``apply()``: the module-level config is shared by every request.
+    """
+    owner_name = _normalise_username(owner) if owner is not None else None
     with _connect() as conn:
-        if conn.execute("SELECT id FROM profiles WHERE id=?",
-                        (profile_id,)).fetchone() is None:
-            return None
-        conn.execute("UPDATE profiles SET active=0")
-        conn.execute("UPDATE profiles SET active=1 WHERE id=?", (profile_id,))
-        row = conn.execute("SELECT * FROM profiles WHERE id=?",
-                           (profile_id,)).fetchone()
+        if owner_name is None:
+            if conn.execute("SELECT id FROM profiles WHERE id=?",
+                            (profile_id,)).fetchone() is None:
+                return None
+            conn.execute("UPDATE profiles SET active=0")
+            conn.execute("UPDATE profiles SET active=1 WHERE id=?", (profile_id,))
+            row = conn.execute("SELECT * FROM profiles WHERE id=?",
+                               (profile_id,)).fetchone()
+        else:
+            if conn.execute(
+                    "SELECT id FROM profiles WHERE id=? AND owner=?",
+                    (profile_id, owner_name)).fetchone() is None:
+                return None
+            conn.execute("UPDATE profiles SET active=0 WHERE owner=?",
+                         (owner_name,))
+            conn.execute("UPDATE profiles SET active=1 WHERE id=? AND owner=?",
+                         (profile_id, owner_name))
+            row = conn.execute(
+                "SELECT * FROM profiles WHERE id=? AND owner=?",
+                (profile_id, owner_name)).fetchone()
     profile = _row_profile(row)
-    apply(profile["payload"])
+    if owner_name is None:
+        apply(profile["payload"])
     return profile
 
 

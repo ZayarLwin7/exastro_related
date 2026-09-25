@@ -845,19 +845,26 @@ def test_missing_execution_env_is_not_silently_ok(client_for, monkeypatch):
 # HTTP layer
 # ---------------------------------------------------------------------------
 
+def _login(http, username="testuser", password="test-password"):
+    """Put an already-created user into a Flask test client's session."""
+    with http.session_transaction() as sess:
+        sess.clear()
+        sess["user"] = username
+    return http
+
+
 @pytest.fixture
-def mock_client(monkeypatch, tmpdb):
-    # `tmpdb` is a dependency, not decoration. Every app-level test below drives
-    # the real routes, and the routes save each run to the history database -- so
-    # without this they wrote 206 mock rows into the operator's own history file
-    # and buried their real runs under twenty pages of "demo". Isolation has to be
-    # structural: a fixture list a test can forget to ask for is a fixture list
-    # that will eventually be forgotten.
+def mock_client(monkeypatch, tmpdb, store):
+    # `tmpdb` and `store` are dependencies, not decoration. Every app-level test
+    # below drives the real routes: history writes must stay in a throwaway DB,
+    # and the user/profile store must be isolated for every test as well.
     monkeypatch.setattr(cfg, "MOCK", True)
     from exastro_client import MockExastroClient
     monkeypatch.setattr(appmod, "client", MockExastroClient())
+    settings.create_user("testuser", "test-password")
+    settings.adopt_orphans("testuser")
     appmod.app.config["TESTING"] = True
-    return appmod.app.test_client()
+    return _login(appmod.app.test_client())
 
 
 def test_index_renders_dropdowns(mock_client):
@@ -1761,7 +1768,7 @@ def cfg_restore():
 
 @pytest.fixture
 def unlocked(mock_client, store):
-    """A logged-in settings session (first run chooses the PIN)."""
+    """A logged-in settings session with the legacy PIN gate enabled."""
     r = mock_client.post("/settings/unlock",
                          data={"pin": "4321", "pin_confirm": "4321"})
     assert r.status_code == 302
@@ -1910,7 +1917,7 @@ def test_env_pin_overrides_the_stored_one(store, monkeypatch):
 
 def test_settings_page_stays_locked_without_the_pin(unlocked):
     locked = unlocked          # same cookie jar; this one is unlocked
-    fresh = appmod.app.test_client()
+    fresh = _login(appmod.app.test_client())
     page = fresh.get("/settings").get_data(as_text=True)
     assert "field_GATEWAY_URL" not in page
     assert "Unlock" in page or "ロック解除" in page
@@ -1919,6 +1926,7 @@ def test_settings_page_stays_locked_without_the_pin(unlocked):
 
 
 def test_saving_without_the_pin_is_refused(mock_client, store):
+    settings.set_pin("4321")
     before = len(settings.list_profiles())
     r = mock_client.post("/settings/save",
                          data={"profile_name": "sneak",
@@ -1934,8 +1942,9 @@ def test_settings_page_never_serves_the_stored_token(unlocked, store, monkeypatc
     monkeypatch.setattr(cfg, "MOCK", True)
     pid = settings.save_profile("live", {"GATEWAY_URL": "http://h:1",
                                          "ORG_ID": "o", "WORKSPACE_ID": "w",
-                                         "API_TOKEN": "SUPERSECRETVALUE42"})
-    settings.activate_profile(pid)
+                                         "API_TOKEN": "SUPERSECRETVALUE42"},
+                                owner="testuser")
+    settings.activate_profile(pid, owner="testuser")
     page = unlocked.get("/settings").get_data(as_text=True)
     assert "SUPERSECRETVALUE42" not in page
     # the operator still needs to recognise which token is stored, so only the
@@ -1949,7 +1958,8 @@ def test_settings_page_never_serves_the_stored_token(unlocked, store, monkeypatc
 
 def test_settings_page_lists_every_profile_with_its_target(unlocked, store):
     settings.save_profile("second", {"GATEWAY_URL": "http://two:2",
-                                     "ORG_ID": "o", "WORKSPACE_ID": "w2"})
+                                     "ORG_ID": "o", "WORKSPACE_ID": "w2"},
+                          owner="testuser")
     page = unlocked.get("/settings").get_data(as_text=True)
     assert "Initial (.env)" in page and "second" in page
     assert "http://two:2" in page
@@ -1974,46 +1984,50 @@ def test_range_validation_rejects_an_absurd_timeout(unlocked, store):
     assert "between 1 and 600" in r.get_data(as_text=True)
 
 
-def test_new_profile_becomes_active_and_rebuilds_the_client(unlocked, store,
-                                                            cfg_restore,
-                                                            monkeypatch):
+def test_new_profile_becomes_active_without_mutating_the_global_target(
+        unlocked, store, cfg_restore, monkeypatch):
     monkeypatch.setattr(cfg, "MOCK", True)
     old_client = appmod.client
+    old_api_base = cfg.API_BASE
     r = unlocked.post("/settings/save", data={
         "profile_name": "brand new", "field_GATEWAY_URL": "https://n:9",
         "field_ORG_ID": "nn", "field_WORKSPACE_ID": "ww",
         "field_TIMEOUT": "30", "field_VAR_TIMEOUT": "60",
         "field_AUTH_TIMEOUT": "90"}, follow_redirects=True)
     assert "brand new" in r.get_data(as_text=True)
-    assert cfg.API_BASE == "https://n:9/api/nn/workspaces/ww/ita"
-    assert appmod.client is not old_client               # rebuilt, not mutated
+    assert settings.own_active_profile("testuser")["name"] == "brand new"
+    assert cfg.API_BASE == old_api_base
+    assert appmod.client is old_client
 
 
 def test_editing_an_existing_profile_does_not_switch_targets(unlocked, store,
                                                              cfg_restore):
-    monkey_active = settings.active_profile()
+    monkey_active = settings.own_active_profile("testuser")
     settings.save_profile("quiet", {"GATEWAY_URL": "http://q:1", "ORG_ID": "o",
-                                   "WORKSPACE_ID": "q"})
+                                   "WORKSPACE_ID": "q"}, owner="testuser")
     quiet = settings.get_profile(
-        [p for p in settings.list_profiles() if p["name"] == "quiet"][0]["id"])
+        [p for p in settings.list_profiles("testuser")
+         if p["name"] == "quiet"][0]["id"], owner="testuser")
     unlocked.post("/settings/save", data={
         "profile_id": quiet["id"], "profile_name": "quiet",
         "field_GATEWAY_URL": "http://q:1", "field_ORG_ID": "o",
         "field_WORKSPACE_ID": "q", "field_TIMEOUT": "30",
         "field_VAR_TIMEOUT": "60", "field_AUTH_TIMEOUT": "90"})
-    assert settings.active_profile()["id"] == monkey_active["id"]
+    assert settings.active_profile("testuser")["id"] == monkey_active["id"]
 
 
-def test_activate_endpoint_switches_and_reapplies(unlocked, store, cfg_restore):
-    monkeypatch_set = unlocked
+def test_activate_endpoint_switches_only_the_signed_in_user(unlocked, store,
+                                                             cfg_restore):
+    old_gateway = cfg.GATEWAY_URL
     pid = settings.save_profile("switch me", {"GATEWAY_URL": "http://s:1",
-                                              "ORG_ID": "o", "WORKSPACE_ID": "s"})
-    r = monkeypatch_set.post("/settings/activate",
-                             data={"profile_id": str(pid)},
-                             follow_redirects=True)
+                                              "ORG_ID": "o", "WORKSPACE_ID": "s"},
+                                owner="testuser")
+    r = unlocked.post("/settings/activate",
+                      data={"profile_id": str(pid)},
+                      follow_redirects=True)
     assert "switch me" in r.get_data(as_text=True)
-    assert cfg.GATEWAY_URL == "http://s:1"
-    assert settings.active_profile()["name"] == "switch me"
+    assert cfg.GATEWAY_URL == old_gateway
+    assert settings.active_profile("testuser")["name"] == "switch me"
 
 
 def test_activate_unknown_profile_is_reported_not_crashed(unlocked, store):
@@ -2082,7 +2096,8 @@ def test_test_connection_falls_back_to_the_stored_secret(unlocked, store,
                                                          monkeypatch):
     pid = settings.save_profile("has token", {"GATEWAY_URL": "http://h:1",
                                               "ORG_ID": "o", "WORKSPACE_ID": "w",
-                                              "API_TOKEN": "STORED77"})
+                                              "API_TOKEN": "STORED77"},
+                                owner="testuser")
     seen = {}
 
     class Draft:
@@ -2170,8 +2185,9 @@ def test_secret_fields_are_absent_from_the_api_and_the_form_values(unlocked,
     monkeypatch.setattr(cfg, "MOCK", True)
     pid = settings.save_profile("leak test", {"GATEWAY_URL": "http://h:1",
                                               "ORG_ID": "o", "WORKSPACE_ID": "w",
-                                              "API_TOKEN": "NOTFORBROWSERS"})
-    settings.activate_profile(pid)
+                                              "API_TOKEN": "NOTFORBROWSERS"},
+                                owner="testuser")
+    settings.activate_profile(pid, owner="testuser")
     page = unlocked.get("/settings").get_data(as_text=True)
     assert "NOTFORBROWSERS" not in page
     body = unlocked.get("/api/creations").get_data(as_text=True)
@@ -2268,7 +2284,8 @@ def test_settings_page_renders_ids_as_dropdowns_with_labels(unlocked, store):
 def test_an_id_the_environment_does_not_offer_stays_visible(unlocked, store):
     pid = settings.save_profile("odd", {"GATEWAY_URL": "http://h:1", "ORG_ID": "o",
                                         "WORKSPACE_ID": "w",
-                                        "ORCHESTRATOR_ID": "77"})
+                                        "ORCHESTRATOR_ID": "77"},
+                                owner="testuser")
     unlocked.post("/settings/activate", data={"profile_id": str(pid)})
     page = unlocked.get("/settings").get_data(as_text=True)
     # not silently rewritten to something else, but clearly flagged
@@ -2395,7 +2412,9 @@ def fresh_copy(store, monkeypatch):
         "GATEWAY_URL": "", "ORG_ID": "", "WORKSPACE_ID": "",
         "API_TOKEN": "", "USER": "", "PASSWORD": ""}, pid,
         clear=("API_TOKEN", "PASSWORD"))
-    return appmod.app.test_client()
+    settings.create_user("testuser", "test-password")
+    settings.adopt_orphans("testuser")
+    return _login(appmod.app.test_client())
 
 
 def test_a_fresh_copy_reports_itself_unconfigured(fresh_copy):
@@ -2414,13 +2433,11 @@ def test_the_form_directs_you_to_settings_inst_of_failing(fresh_copy):
     assert r.headers["Location"] == "/settings?new=1"
     landing = fresh_copy.get("/", follow_redirects=True).get_data(as_text=True)
     assert "No Exastro environment is set up yet" in landing
-    # a brand-new store asks for a PIN before it shows anything else
-    assert "Choose a Settings PIN" in landing
-    fresh_copy.post("/settings/unlock", data={"pin": "1234", "pin_confirm": "1234"})
-    page = fresh_copy.get("/settings").get_data(as_text=True)
-    assert "field_GATEWAY_URL" in page              # the form is right there
-    assert "Not connected yet" in page
-    assert "Still to set" in page
+    # Login is the primary gate. With no pre-existing PIN, the signed-in user
+    # goes straight to their private profile form.
+    assert "field_GATEWAY_URL" in landing
+    assert "Not connected yet" in landing
+    assert "Still to set" in landing
 
 
 def test_the_api_refuses_with_409_not_an_html_redirect(fresh_copy):
@@ -2452,7 +2469,9 @@ def test_mock_mode_needs_no_configuration(store, monkeypatch):
     monkeypatch.setattr(cfg, "WORKSPACE_ID", "")
     appmod.rebuild_client()                         # now a MockExastroClient
     try:
-        assert appmod.app.test_client().get("/").status_code == 200
+        settings.create_user("testuser", "test-password")
+        settings.adopt_orphans("testuser")
+        assert _login(appmod.app.test_client()).get("/").status_code == 200
     finally:
         appmod.rebuild_client()
 
@@ -2462,6 +2481,11 @@ def test_unlocked_settings_session_is_never_bounced(unlocked, store, monkeypatch
     guard must not fight the page it is sending you to."""
     monkeypatch.setattr(cfg, "GATEWAY_URL", "")
     monkeypatch.setattr(cfg, "MOCK", False)
+    active = settings.own_active_profile("testuser")
+    settings.save_profile(active["name"], {
+        "GATEWAY_URL": "", "ORG_ID": "", "WORKSPACE_ID": "",
+        "API_TOKEN": "", "USER": "", "PASSWORD": ""}, active["id"],
+        clear=("API_TOKEN", "PASSWORD"), owner="testuser")
     assert unlocked.get("/settings").status_code == 200   # never a redirect loop
     assert unlocked.get("/").status_code in (200, 302)
     assert "field_GATEWAY_URL" in unlocked.get("/settings").get_data(as_text=True)
@@ -3288,44 +3312,40 @@ def test_an_untouched_prefilled_row_still_sends_nothing(client_for):
     assert cols["a"]["name"] == _cols(c, "s1")["a"]["item_name"] == "Ay"
 
 
-def test_the_sheet_endpoint_reports_its_three_states(mock_client, tmpdb, client_for):
-    saved = appmod.client
-    try:
-        appmod.client = client_for()
-        appmod.client.create_parameter_sheet("s_live", {"a": "1"},
-                                             {"a": {"name": "Ay", "unique": True}})
-        got = mock_client.get("/api/sheet/s_live")
-        assert got.get_json() == {"state": "ok",
-                                  "columns": {"a": {"name": "Ay",
-                                                    "required": False,
-                                                    "unique": True}}}
-        assert mock_client.get("/api/sheet/ghost").get_json()["state"] == "absent"
-        assert mock_client.get("/api/sheet/").status_code in (308, 404)
+def test_the_sheet_endpoint_reports_its_three_states(mock_client, tmpdb,
+                                                       client_for, monkeypatch):
+    routed = client_for()
+    monkeypatch.setattr(appmod, "client_for", lambda username: routed)
+    routed.create_parameter_sheet("s_live", {"a": "1"},
+                                  {"a": {"name": "Ay", "unique": True}})
+    got = mock_client.get("/api/sheet/s_live")
+    assert got.get_json() == {"state": "ok",
+                              "columns": {"a": {"name": "Ay",
+                                                "required": False,
+                                                "unique": True}}}
+    assert mock_client.get("/api/sheet/ghost").get_json()["state"] == "absent"
+    assert mock_client.get("/api/sheet/").status_code in (308, 404)
 
-        class Boom:
-            def sheet_column_state(self, name):
-                raise RuntimeError("no route to host")
+    class Boom:
+        def sheet_column_state(self, name):
+            raise RuntimeError("no route to host")
 
-        appmod.client = Boom()
-        bad = mock_client.get("/api/sheet/any")
-        assert bad.status_code == 502 and bad.get_json()["state"] == "error"
-    finally:
-        appmod.client = saved
+    monkeypatch.setattr(appmod, "client_for", lambda username: Boom())
+    bad = mock_client.get("/api/sheet/any")
+    assert bad.status_code == 502 and bad.get_json()["state"] == "error"
 
 
-def test_the_endpoint_only_answers_what_the_grid_needs(mock_client, tmpdb, client_for):
+def test_the_endpoint_only_answers_what_the_grid_needs(mock_client, tmpdb,
+                                                        client_for, monkeypatch):
     """Column ids and timestamps are the shape a write has to echo, not something
     a browser should be handed back."""
-    saved = appmod.client
-    try:
-        appmod.client = client_for()
-        appmod.client.create_parameter_sheet("s_live", {"a": "1"})
-        body = mock_client.get("/api/sheet/s_live").get_data(as_text=True)
-        for leak in ("create_column_id", "menu_create_id", "last_update_date_time",
-                     "token", "password"):
-            assert leak not in body, leak
-    finally:
-        appmod.client = saved
+    routed = client_for()
+    monkeypatch.setattr(appmod, "client_for", lambda username: routed)
+    routed.create_parameter_sheet("s_live", {"a": "1"})
+    body = mock_client.get("/api/sheet/s_live").get_data(as_text=True)
+    for leak in ("create_column_id", "menu_create_id", "last_update_date_time",
+                 "token", "password"):
+        assert leak not in body, leak
 
 
 def test_the_grid_is_wired_to_the_live_sheet():
@@ -4318,3 +4338,284 @@ def test_conductor_i18n_keys_exist_in_both_locales():
         assert key in i18n.TEXT, f"missing i18n key: {key}"
         entry = i18n.TEXT[key]
         assert "en" in entry and "ja" in entry
+
+
+# ---------------------------------------------------------------------------
+# Per-user app login and private profile ownership
+# ---------------------------------------------------------------------------
+
+def test_app_users_are_normalized_hashed_and_authenticated(store):
+    assert settings.user_count() == 0
+    assert settings.create_user("  Alice  ", "correct horse")
+    assert not settings.create_user("alice", "another password")
+    assert not settings.create_user("ab", "too short")
+    assert not settings.create_user("has space", "password")
+    assert settings.get_user("ALICE")["username"] == "alice"
+    stored = settings.get_user("alice")["password_hash"]
+    assert stored.count("$") == 1
+    assert len(stored.split("$", 1)[0]) == 32
+    assert len(stored.split("$", 1)[1]) == 64
+    assert settings.authenticate("alice", "correct horse")
+    assert not settings.authenticate("alice", "wrong")
+    assert not settings.authenticate("bob", "correct horse")
+    assert settings.user_count() == 1
+
+
+def test_profile_ownership_hides_ids_from_another_user(store):
+    settings.create_user("alice", "alice-password")
+    settings.create_user("bob", "bob-password")
+    pid = settings.save_profile("Alice only", {"WORKSPACE_ID": "private-a"},
+                                owner="alice")
+    assert settings.get_profile(pid, owner="alice")["owner"] == "alice"
+    assert settings.get_profile(pid, owner="bob") is None
+
+
+def test_profile_mutations_refuse_an_id_owned_by_another_user(store):
+    settings.create_user("alice", "alice-password")
+    settings.create_user("bob", "bob-password")
+    pid = settings.save_profile("Alice only", {"WORKSPACE_ID": "private-a"},
+                                owner="alice")
+    with pytest.raises(KeyError):
+        settings.save_profile("stolen", {"WORKSPACE_ID": "stolen"}, pid,
+                              owner="bob")
+    assert not settings.delete_profile(pid, owner="bob")
+    assert settings.activate_profile(pid, owner="bob") is None
+    assert settings.get_profile(pid, owner="alice")["name"] == "Alice only"
+
+
+def test_first_user_adopts_orphan_profiles(store):
+    orphan = settings.list_profiles()[0]
+    settings.create_user("alice", "alice-password")
+    assert settings.adopt_orphans("alice") == 1
+    assert settings.get_profile(orphan["id"], owner="alice")["owner"] == "alice"
+    assert settings.adopt_orphans("alice") == 0
+
+
+def test_legacy_profiles_table_gains_owner_without_losing_rows(tmp_path,
+                                                               monkeypatch):
+    path = tmp_path / "legacy-settings.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("""
+            CREATE TABLE profiles(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                payload TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""")
+        conn.execute("INSERT INTO profiles"
+                     "(name,payload,active,created_at,updated_at) VALUES (?,?,?,?,?)",
+                     ("legacy", json.dumps({"WORKSPACE_ID": "old"}), 1,
+                      "2020-01-01 00:00:00", "2020-01-01 00:00:00"))
+    monkeypatch.setattr(settings, "SETTINGS_DB", str(path))
+    settings.init_store()
+    assert settings.get_profile(1)["payload"]["WORKSPACE_ID"] == "old"
+    assert settings.get_profile(1)["owner"] is None
+    settings.create_user("alice", "password")
+    assert settings.adopt_orphans("alice") == 1
+    assert settings.get_profile(1, owner="alice")["owner"] == "alice"
+
+
+def test_login_page_and_api_guard_are_reachable_while_logged_out(tmpdb, store):
+    http = appmod.app.test_client()
+    page = http.get("/login")
+    assert page.status_code == 200
+    assert "Create the first app user" in page.get_data(as_text=True)
+    assert http.get("/").status_code == 302
+    assert http.get("/").headers["Location"].endswith("/login")
+    api = http.get("/api/creations")
+    assert api.status_code == 401
+    assert "log in" in api.get_json()["error"].lower()
+
+
+def test_first_registration_claims_orphans_and_logout_returns_to_login(tmpdb,
+                                                                      store,
+                                                                      monkeypatch):
+    monkeypatch.setattr(cfg, "MOCK", True)
+    http = appmod.app.test_client()
+    response = http.post("/register", data={
+        "username": "alice", "password": "alice-password",
+        "password_confirm": "alice-password"}, follow_redirects=True)
+    assert response.status_code == 200
+    assert "alice" in response.get_data(as_text=True)
+    assert settings.get_profile(1, owner="alice")["owner"] == "alice"
+    logged_out = http.post("/logout", follow_redirects=True)
+    assert logged_out.status_code == 200
+    assert "Log in" in logged_out.get_data(as_text=True)
+    assert http.get("/").status_code == 302
+
+
+def test_login_failure_and_private_settings_listing(tmpdb, store, monkeypatch):
+    monkeypatch.setattr(cfg, "MOCK", True)
+    settings.create_user("alice", "alice-password")
+    settings.adopt_orphans("alice")
+    settings.save_profile("Alice profile", {"WORKSPACE_ID": "a"}, owner="alice")
+    settings.create_user("bob", "bob-password")
+    settings.save_profile("Bob profile", {"WORKSPACE_ID": "b"}, owner="bob")
+    http = appmod.app.test_client()
+    bad = http.post("/login", data={"username": "bob", "password": "wrong"},
+                    follow_redirects=True)
+    assert "incorrect" in bad.get_data(as_text=True)
+    http.post("/login", data={"username": "bob", "password": "bob-password"})
+    page = http.get("/settings").get_data(as_text=True)
+    assert "Bob profile" in page
+    assert "Alice profile" not in page
+    assert "bob" in page
+    assert "Alice profile" not in http.get("/").get_data(as_text=True)
+
+
+def test_existing_pin_remains_a_second_gate_after_login(tmpdb, store,
+                                                          monkeypatch):
+    monkeypatch.setattr(cfg, "MOCK", True)
+    settings.create_user("alice", "alice-password")
+    settings.adopt_orphans("alice")
+    settings.set_pin("4321")
+    http = _login(appmod.app.test_client(), username="alice")
+    locked = http.get("/settings").get_data(as_text=True)
+    assert "field_GATEWAY_URL" not in locked
+    assert "Unlock" in locked
+    unlocked = http.post("/settings/unlock", data={"pin": "4321"},
+                         follow_redirects=True).get_data(as_text=True)
+    assert "field_GATEWAY_URL" in unlocked
+
+
+def test_client_cache_is_per_user_and_rebuilds_after_profile_edit(store,
+                                                                  monkeypatch):
+    settings.create_user("alice", "alice-password")
+    settings.create_user("bob", "bob-password")
+    settings.adopt_orphans("alice")
+    alice_id = settings.own_active_profile("alice")["id"]
+    settings.save_profile("Initial (.env)",
+                          {"GATEWAY_URL": "https://alice:1", "ORG_ID": "a",
+                           "WORKSPACE_ID": "a"}, alice_id, owner="alice")
+    bob_id = settings.save_profile("Bob only", {"GATEWAY_URL": "https://bob:2",
+                                                 "ORG_ID": "b", "WORKSPACE_ID": "b"},
+                                   owner="bob")
+    settings.activate_profile(bob_id, owner="bob")
+    monkeypatch.setattr(cfg, "MOCK", False)
+    built = []
+
+    class ProbeClient:
+        def __init__(self, overrides=None):
+            self.overrides = dict(overrides or {})
+            built.append(self)
+
+    monkeypatch.setattr(appmod, "ExastroClient", ProbeClient)
+    alice_one = appmod.client_for("alice")
+    assert alice_one is appmod.client_for("alice")
+    assert alice_one.overrides["GATEWAY_URL"] == "https://alice:1"
+    bob = appmod.client_for("bob")
+    assert bob.overrides["GATEWAY_URL"] == "https://bob:2"
+    settings.save_profile("Initial (.env)",
+                          {"GATEWAY_URL": "https://alice:3", "ORG_ID": "a",
+                           "WORKSPACE_ID": "a"}, alice_id, owner="alice")
+    assert appmod.client_for("alice") is not alice_one
+    assert len(built) == 3
+
+
+def test_new_login_i18n_keys_have_both_locales():
+    keys = ("login", "logout", "username", "password", "register",
+            "first_run", "first_run_explain", "welcome", "wrong_credentials",
+            "login_required", "registration_closed", "invalid_registration",
+            "password_required", "password_mismatch", "logged_out",
+            "signed_in_as")
+    for key in keys:
+        assert key in i18n.TEXT, key
+        assert set(i18n.TEXT[key]) >= {"en", "ja"}, key
+        assert i18n.TEXT[key]["en"] and i18n.TEXT[key]["ja"], key
+
+
+# ---------------------------------------------------------------------------
+# user accounts and admin management
+# ---------------------------------------------------------------------------
+
+def test_the_first_account_is_an_admin_and_later_ones_are_not(store):
+    assert settings.create_user("firstuser", "first-password")
+    assert settings.is_admin("firstuser")
+    assert settings.create_user("seconduser", "second-password")
+    assert not settings.is_admin("seconduser"), \
+        "an ordinary account must not be able to hand out more accounts"
+
+
+def test_only_an_admin_can_reach_the_user_pages(mock_client, store):
+    # `mock_client` is the first account, so it IS the admin. Create an ordinary
+    # account and drive the routes as that person instead.
+    settings.create_user("ordinary", "ordinary-password")
+    assert not settings.is_admin("ordinary")
+    as_ordinary = _login(appmod.app.test_client(), "ordinary")
+    r = as_ordinary.get("/settings/users", follow_redirects=True)
+    assert "user_password_short" not in r.get_data(as_text=True), \
+        "a non-admin must not be served the add-a-user form"
+    as_ordinary.post("/settings/users/create",
+                     data={"username": "sneaky", "password": "sneaky-password",
+                           "password_confirm": "sneaky-password"},
+                     follow_redirects=True)
+    assert settings.get_user("sneaky") is None, \
+        "an ordinary account must not be able to hand out accounts by POST"
+
+
+def test_an_admin_can_add_a_person_and_that_person_can_log_in(mock_client, store):
+    r = mock_client.post("/settings/users/create",
+                         data={"username": "colleague", "password": "colleague-password",
+                               "password_confirm": "colleague-password"},
+                         follow_redirects=True)
+    assert settings.get_user("colleague") is not None
+    fresh = appmod.app.test_client()
+    fresh.post("/login", data={"username": "colleague",
+                               "password": "colleague-password"},
+               follow_redirects=True)
+    assert fresh.get("/").status_code == 200, "the new account must actually work"
+
+
+def test_a_short_login_password_is_refused(mock_client, store):
+    mock_client.post("/settings/users/create",
+                     data={"username": "shorty", "password": "abc",
+                           "password_confirm": "abc"},
+                     follow_redirects=True)
+    assert settings.get_user("shorty") is None, \
+        "this password guards a long-lived Exastro token; 3 characters is not one"
+
+
+def test_the_last_admin_cannot_be_deleted(mock_client, store):
+    # the last standing admin is the only way to add accounts; losing it would
+    # leave an install nobody can onboard anybody onto
+    assert settings.delete_user("testuser") is False
+    assert settings.get_user("testuser") is not None
+    r = mock_client.post("/settings/users/delete", data={"username": "testuser"},
+                         follow_redirects=True)
+    assert settings.get_user("testuser") is not None
+
+
+def test_deleting_a_user_takes_their_profiles_with_it(mock_client, store):
+    settings.create_user("leaver", "leaver-password")
+    pid = settings.save_profile("leaver-profile", {"GATEWAY_URL": "http://gone:1"},
+                                owner="leaver")
+    assert settings.delete_user("leaver") is True
+    assert settings.get_profile(pid, owner="leaver") is None, \
+        "an account that can no longer log in must not leave its profiles behind"
+    assert settings.authenticate("leaver", "leaver-password") is False
+
+
+def test_two_users_never_share_a_client_target(mock_client, store):
+    """The whole point of per-user profiles: switching target must be per person.
+
+    A single module-level client would let one person's profile change where
+    everybody's next run writes -- the failure this feature exists to prevent.
+    """
+    settings.create_user("a-user", "a-password")
+    settings.save_profile("a-env", {"GATEWAY_URL": "http://a:1", "ORG_ID": "o",
+                                    "WORKSPACE_ID": "w"}, owner="a-user")
+    settings.save_profile("b-env", {"GATEWAY_URL": "http://b:2", "ORG_ID": "o",
+                                    "WORKSPACE_ID": "w"}, owner="testuser")
+    settings.activate_profile(
+        [p["id"] for p in settings.list_profiles(owner="a-user")
+         if p["name"] == "a-env"][0], owner="a-user")
+    settings.activate_profile(
+        [p["id"] for p in settings.list_profiles(owner="testuser")
+         if p["name"] == "b-env"][0], owner="testuser")
+    a_client = appmod.client_for("a-user")
+    b_client = appmod.client_for("testuser")
+    assert a_client is not b_client
+    assert a_client._v("GATEWAY_URL") == "http://a:1"
+    assert b_client._v("GATEWAY_URL") == "http://b:2"

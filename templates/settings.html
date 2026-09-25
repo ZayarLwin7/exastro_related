@@ -16,6 +16,8 @@
   .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
   .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
   .appbar .spacer{flex:1}
+  .useraction{display:flex;align-items:center;gap:8px}
+  .userchip{display:inline-flex;align-items:center;max-width:180px;padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--txt);font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut)}
   .pill .dot{width:8px;height:8px;border-radius:50%}
   .pill.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.2)}
@@ -104,6 +106,17 @@
     <div class="subtitle">{{ t('settings_lede') }}</div>
   </div>
   <div class="spacer"></div>
+  {% if current_user %}
+  <div class="useraction">
+    <span class="userchip" title="{{ t('signed_in_as', name=current_user) }}">{{ current_user }}</span>
+    {% if current_user_is_admin %}
+    <a class="btn sm" href="/settings/users" style="text-decoration:none;display:inline-block">{{ t('users_title') }}</a>
+    {% endif %}
+    <form method="post" action="/logout">
+      <button class="btn sm" type="submit">{{ t('logout') }}</button>
+    </form>
+  </div>
+  {% endif %}
   {% if cfg.mock %}
   <span class="pill mock"><span class="dot"></span>{{ t('pill_mock') }}</span>
   {% else %}

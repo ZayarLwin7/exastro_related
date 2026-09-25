@@ -36,6 +36,65 @@ TEXT: dict[str, dict[str, str]] = {
     "pill_live": {"en": "Live", "ja": "本番接続"},
     "pill_mock": {"en": "Mock Mode", "ja": "モックモード"},
 
+    # ---- app login and first-run registration ------------------------------
+    "login": {"en": "Log in", "ja": "ログイン"},
+    "logout": {"en": "Log out", "ja": "ログアウト"},
+    "username": {"en": "Username", "ja": "ユーザー名"},
+    "password": {"en": "Password", "ja": "パスワード"},
+    "confirm_password": {"en": "Confirm password", "ja": "パスワード（確認）"},
+    "register": {"en": "Register", "ja": "登録"},
+    "first_run": {"en": "Create the first app user", "ja": "最初の利用者を登録"},
+    "first_run_explain": {
+        "en": "No app users exist yet. The first account claims the connection "
+              "profiles already stored by this installation.",
+        "ja": "アプリ利用者がまだいません。最初のアカウントが、この環境に保存済みの"
+              "接続プロファイルを引き継ぎます。"},
+    "welcome": {"en": "Welcome, {name}.", "ja": "ようこそ、{name} さん。"},
+    "signed_in_as": {"en": "Signed in as {name}", "ja": "{name} としてログイン中"},
+    "wrong_credentials": {"en": "The username or password is incorrect.",
+                          "ja": "ユーザー名またはパスワードが正しくありません。"},
+    "login_required": {"en": "Log in to continue.", "ja": "続行するにはログインしてください。"},
+    "logged_out": {"en": "You have been logged out.", "ja": "ログアウトしました。"},
+    "registration_closed": {
+        "en": "First-run registration is already closed.", "ja": "初回登録はすでに完了しています。"},
+    "invalid_registration": {
+        "en": "Choose a username of at least 3 characters with no spaces.",
+        "ja": "空白を含まない 3 文字以上のユーザー名を指定してください。"},
+    "password_required": {"en": "A password is required.", "ja": "パスワードを入力してください。"},
+    "password_mismatch": {"en": "The passwords do not match.", "ja": "パスワードが一致しません。"},
+
+    # ---- user management (admin only) ---------------------------------------
+    "users_title": {"en": "User accounts", "ja": "ユーザーアカウント"},
+    "user_delete": {"en": "Delete", "ja": "削除"},
+    "users_lede": {
+        "en": "Each person signs in here and gets their own private profiles. "
+              "They cannot see or change anyone else's, including an admin's.",
+        "ja": "各自がここでログインし、自分専用のプロファイルを使用します。"
+              "管理者を含め、他のユーザーのプロファイルは閲覧・変更できません。"},
+    "users_new": {"en": "Add a user", "ja": "ユーザーを追加"},
+    "users_none": {"en": "No accounts yet.", "ja": "アカウントがまだありません。"},
+    "users_admin_badge": {"en": "admin", "ja": "管理者"},
+    "users_you": {"en": "you", "ja": "自分"},
+    "user_password_short": {
+        "en": "Use at least 8 characters — this password guards that person's "
+              "Exastro token.",
+        "ja": "8 文字以上にしてください。このパスワードはそのユーザーの "
+              "Exastro トークンを守ります。"},
+    "user_create_failed": {
+        "en": "That user name is already taken, or unusable.",
+        "ja": "そのユーザー名は使用済み、または使用できません。"},
+    "user_created": {"en": "Created the account '{name}'.", "ja": "アカウント「{name}」を作成しました。"},
+    "user_deleted": {"en": "Deleted the account '{name}' and its profiles.",
+                     "ja": "アカウント「{name}」とそのプロファイルを削除しました。"},
+    "user_delete_failed": {
+        "en": "That account could not be deleted. The last admin cannot be removed.",
+        "ja": "そのアカウントは削除できません。最後の管理者は削除できません。"},
+    "user_cannot_delete_self": {
+        "en": "You cannot delete the account you are signed in with.",
+        "ja": "ログイン中の自分自身のアカウントは削除できません。"},
+    "admin_only": {"en": "Only an admin can manage user accounts.",
+                   "ja": "ユーザーアカウントの管理は管理者のみ行えます。"},
+
     # ---- form -------------------------------------------------------------
     "new_movement": {"en": "New Movement", "ja": "新規作業実行"},
     "lede": {"en": "The JSON keys become the parameter-sheet columns "

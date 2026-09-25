@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('login') }} · {{ t('app_name') }}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="alternate icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  .wrap{max-width:460px;margin:0 auto;padding:72px 24px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:30px}
+  .logo{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+  .logo svg{width:25px;height:25px}
+  h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+  .lede{color:var(--mut);font-size:13.5px;line-height:1.6;margin-bottom:22px}
+  .field{margin-bottom:16px}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin-bottom:7px}
+  .input{width:100%;padding:12px 14px;border-radius:12px;background:rgba(var(--field-rgb),.28);border:1px solid var(--line);color:var(--txt);font:inherit;font-size:14px}
+  .input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.18)}
+  .btn{display:block;width:100%;margin-top:22px;border:0;border-radius:12px;padding:12px 20px;font:inherit;font-size:14px;font-weight:700;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));cursor:pointer}
+  .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
+  .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
+  .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </div>
+    <h1>{{ t('first_run') if first_run else t('login') }}</h1>
+    {% if first_run %}<p class="lede">{{ t('first_run_explain') }}</p>{% endif %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="post" action="{{ '/register' if first_run else '/login' }}">
+      <div class="field">
+        <label for="username">{{ t('username') }}</label>
+        <input class="input" id="username" name="username" type="text" minlength="3" autocomplete="username" autocapitalize="none" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">{{ t('password') }}</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="{{ 'new-password' if first_run else 'current-password' }}" required>
+      </div>
+      {% if first_run %}
+      <div class="field">
+        <label for="password_confirm">{{ t('confirm_password') }}</label>
+        <input class="input" id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
+      </div>
+      {% endif %}
+      <button class="btn" type="submit">{{ t('register') if first_run else t('login') }}</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

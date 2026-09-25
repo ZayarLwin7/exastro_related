@@ -832,6 +832,38 @@ never returns an unlock is offered — worded to say the run may still be finish
 server-side. It guards **this tab only**: a second window still submits
 independently, and re-running overwrites the first run's role link and bindings.
 
+### Logins and per-person profiles
+
+People sign in to the app. Each person gets their **own private profiles** and
+cannot see, read, edit, activate or delete anyone else's -- including an admin's.
+They can still all share one ITA account, so "my profile" can simply point at
+the team's credentials.
+
+The first person to arrive registers and becomes the **admin**; an existing
+install's profiles are adopted by that first account, so nothing is lost when
+you turn this on. From then on, `/settings` -> **User accounts** is where the
+admin adds and removes people. Adding accounts by self-service is closed on
+purpose: an open registration form on a LAN is how a stranger ends up with a
+token.
+
+Two rules that are deliberate:
+
+* **Passwords are not the ITA credentials.** The login password only guards the
+  app; the ITA token or username/password still lives in that person's profile,
+  and the file stays `0600`.
+* **The last admin cannot be deleted**, and nobody can delete the account they
+  are signed in with. An install nobody can add accounts to is an install nobody
+  can onboard onto.
+
+The PIN still works if you have set one: `/settings` asks for the login first and
+the PIN second, so switching this on does not lock you out of an existing setup.
+
+Isolation is enforced in the queries, not in the page: `get_profile(id, owner)`
+and its siblings refuse a profile id belonging to somebody else, so posting
+another user's id in a form changes nothing. Per-user clients are built through
+the existing per-instance override, never by mutating the shared config, so one
+person switching target cannot repoint anybody else's next run.
+
 ### Run it as a service (so it does not depend on your laptop)
 
 `deploy/install-service.sh` installs it as a systemd unit: starts at boot, restarts
