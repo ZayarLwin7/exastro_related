@@ -5482,6 +5482,10 @@ def test_the_product_name_sits_on_the_marks_centre_line(store):
     rule = re.search(r"\.brand\{([^}]*)\}", body)
     assert rule
     decl = rule.group(1)
-    assert "translateY(-2px)" in decl, "the name needs a nudge onto the centre"
+    import re as _re
+    lift = _re.search(r"translateY\(-(\d+)px\)", decl)
+    assert lift, "the name needs a nudge onto the mark's centre"
+    assert int(lift.group(1)) >= 2, \
+        f"a {lift.group(1)}px nudge is too small to line the cap-height up"
     row = re.search(r"\.logorow\{([^}]*)\}", body)
     assert "align-items:center" in row.group(1)
