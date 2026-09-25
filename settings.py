@@ -169,8 +169,12 @@ REQUIRED_FIELDS = ("GATEWAY_URL", "ORG_ID", "WORKSPACE_ID")
 def effective(values: dict | None = None) -> dict:
     """Config values as they stand now, with the profile merged in."""
     merged = env_defaults()
-    merged.update((values if values is not None else
-                   (active_profile() or {}).get("payload")) or {})
+    merged.update({k: v for k, v in (values if values is not None else
+                   (active_profile() or {}).get("payload") or {}).items()
+                   if k in BY_KEY})
+    # Coerced, not just merged: a per-user client is built straight from this
+    # dict, so a TIMEOUT left as "90" reaches the HTTP layer and 500s there.
+    coerce_types(merged)
     merged.update({k: v for k, v in derived(merged).items() if v})
     return merged
 
@@ -206,6 +210,26 @@ def missing_labels(values: dict | None = None) -> list[str]:
     return out
 
 
+def coerce_types(merged: dict) -> dict:
+    """Turn the stored text back into the types the client expects.
+
+    A profile is saved from a web form, so every number and checkbox arrives as
+    a string. The client hands TIMEOUT straight to the HTTP layer, which rejects
+    a string with `Timeout value connect was 90` -- so every consumer of a
+    profile's values has to pass through here, not just the ones that happen to
+    write them onto `config`.
+    """
+    for key in INT_FIELDS:
+        try:
+            merged[key] = int(str(merged[key]).strip() or 0)
+        except (TypeError, ValueError):
+            merged[key] = int(getattr(cfg, key, 0) or 0)
+    for key in BOOL_FIELDS:
+        merged[key] = bool(merged[key]) if isinstance(merged[key], bool) \
+            else str(merged[key]).strip().lower() in ("1", "true", "on", "yes")
+    return merged
+
+
 def apply(values: dict) -> dict:
     """Push a profile's values onto the `config` module.
 
@@ -215,14 +239,7 @@ def apply(values: dict) -> dict:
     """
     merged = env_defaults()          # fall back to .env for anything unset
     merged.update({k: v for k, v in (values or {}).items() if k in BY_KEY})
-    for key in INT_FIELDS:
-        try:
-            merged[key] = int(str(merged[key]).strip() or 0)
-        except (TypeError, ValueError):
-            merged[key] = int(getattr(cfg, key, 0) or 0)
-    for key in BOOL_FIELDS:
-        merged[key] = bool(merged[key]) if isinstance(merged[key], bool) \
-            else str(merged[key]).strip().lower() in ("1", "true", "on", "yes")
+    coerce_types(merged)
 
     for key, value in merged.items():
         setattr(cfg, key, value)

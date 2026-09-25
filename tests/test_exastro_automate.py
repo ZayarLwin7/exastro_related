@@ -4658,3 +4658,65 @@ def test_the_history_card_is_scoped_per_user(mock_client, store):
     as_workmate = _login(appmod.app.test_client(), "workmate")
     theirs = as_workmate.get("/").get_data(as_text=True)
     assert "mine" not in theirs, "the history panel must render the other user's own"
+
+
+# ---------------------------------------------------------------------------
+# a brand-new account has no profile yet
+# ---------------------------------------------------------------------------
+
+def test_a_profile_whose_numbers_were_saved_as_text_still_types_correctly(store):
+    """Every profile value arrives from a form as a string.
+
+    The client hands TIMEOUT straight to the HTTP layer, which rejects a string
+    with "Timeout value connect was 90" and 500s the whole page. This is the
+    exact shape of that bug: a stored "90" reaching a real client.
+    """
+    pid = settings.save_profile("typed", {"GATEWAY_URL": "http://h:1",
+                                          "ORG_ID": "o", "WORKSPACE_ID": "w",
+                                          "API_TOKEN": "t", "TIMEOUT": "90"},
+                                owner="typed-owner")
+    stored = settings.get_profile(pid, owner="typed-owner")
+    check = settings.effective(stored["payload"])
+    assert isinstance(check["TIMEOUT"], int), \
+        f"a saved timeout must come back as an int, got {type(check['TIMEOUT'])}"
+    assert check["TIMEOUT"] == 90
+
+
+def test_the_per_user_client_never_gets_a_string_timeout(store):
+    """The per-user client is built from effective(), so this is where it broke."""
+    settings.create_user("typed-user", "typed-password")
+    pid = settings.save_profile("typed", {"GATEWAY_URL": "http://h:1",
+                                          "ORG_ID": "o", "WORKSPACE_ID": "w",
+                                          "API_TOKEN": "t", "TIMEOUT": "90"},
+                                owner="typed-user")
+    settings.activate_profile(pid, owner="typed-user")
+    cl = appmod.client_for("typed-user")
+    assert isinstance(cl._v("TIMEOUT"), int), \
+        "a string timeout is accepted here and rejected by the HTTP layer"
+
+
+def test_apply_and_effective_agree_on_types(store, cfg_restore):
+    """They are two doors to the same values; they must not disagree."""
+    pid = settings.save_profile("both", {"GATEWAY_URL": "http://h:1",
+                                         "ORG_ID": "o", "WORKSPACE_ID": "w",
+                                         "API_TOKEN": "t", "TIMEOUT": "45",
+                                         "VERIFY_TLS": "on"},
+                                owner="both-owner")
+    stored = settings.get_profile(pid, owner="both-owner")["payload"]
+    settings.apply(stored)
+    from_apply = (cfg.TIMEOUT, cfg.VERIFY_TLS)
+    from_effective = (settings.effective(stored)["TIMEOUT"],
+                      settings.effective(stored)["VERIFY_TLS"])
+    assert from_apply == from_effective, \
+        "a value that types one way for config and another for a client is a trap"
+
+
+def test_a_new_user_with_no_profile_gets_a_page_not_a_crash(store, monkeypatch):
+    """Logging in for the first time, before setting up a profile, must work."""
+    settings.create_user("fresh", "fresh-password")
+    c = _login(appmod.app.test_client(), "fresh")
+    r = c.get("/")
+    assert r.status_code == 200, (
+        "an account with no profile of its own must still see the form")
+    body = r.get_data(as_text=True)
+    assert "<form" in body and "Internal Server Error" not in body
