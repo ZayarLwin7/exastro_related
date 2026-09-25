@@ -4758,3 +4758,72 @@ def test_a_new_user_cannot_borrow_the_installers_client(store):
     assert cl._v("GATEWAY_URL") == "", \
         "a profile-less client must not be pointed at somebody else's Exastro"
     assert cl._v("API_TOKEN") == ""
+
+
+def _form_value(body: str, key: str) -> str:
+    m = re.search(r'id="field_%s"[^>]*value="([^"]*)"' % key, body)
+    return m.group(1) if m else ""
+
+
+def test_a_new_account_gets_a_blank_settings_form(store):
+    """Connection *and* credentials must start empty for a new account.
+
+    The form used to be seeded from `env_defaults()`, which reads the
+    process-wide config -- so a colleague who had just been added saw the
+    founder's gateway, org, workspace and a "set · ••••1234" token hint, one
+    keystroke from being saved into their own profile.
+    """
+    settings.create_user("founder", "founder-password")
+    settings.adopt_orphans("founder")
+    fp = settings.save_profile("founder-prod",
+                               {"GATEWAY_URL": "http://founder-only:4040",
+                                "ORG_ID": "founders", "WORKSPACE_ID": "prod",
+                                "API_TOKEN": "FOUNDERTOKEN1234",
+                                "USER": "svc_founder",
+                                "PASSWORD": "founder-secret",
+                                "EXEC_ENV": "prod-env"},
+                               owner="founder")
+    settings.activate_profile(fp, owner="founder")
+    settings.create_user("newcomer", "newcomer-password")
+
+    c = _login(appmod.app.test_client(), "newcomer")
+    body = c.get("/settings?new=1").get_data(as_text=True)
+    for field in ("GATEWAY_URL", "ORG_ID", "WORKSPACE_ID", "USER", "PASSWORD",
+                  "EXEC_ENV", "API_TOKEN"):
+        assert _form_value(body, field) == "", \
+            f"{field} was pre-filled for an account with no profile of its own"
+    assert "••••" not in body, "a token hint for somebody else's token leaked"
+    assert "FOUNDERTOKEN1234" not in body
+    assert "founder-only" not in body
+    assert "founder-prod" not in body, "the founder's profile is not on this page"
+
+
+def test_the_owner_still_sees_their_own_prefilled_form(store):
+    """Blanking the new-account form must not blank everybody's."""
+    settings.create_user("founder", "founder-password")
+    settings.adopt_orphans("founder")
+    fp = settings.save_profile("founder-prod",
+                               {"GATEWAY_URL": "http://founder-only:4040",
+                                "ORG_ID": "founders", "WORKSPACE_ID": "prod",
+                                "API_TOKEN": "FOUNDERTOKEN1234"},
+                               owner="founder")
+    settings.activate_profile(fp, owner="founder")
+    c = _login(appmod.app.test_client(), "founder")
+    body = c.get("/settings").get_data(as_text=True)
+    assert _form_value(body, "GATEWAY_URL") == "http://founder-only:4040"
+    assert "founder-prod" in body
+
+
+def test_editing_your_own_profile_still_shows_it(store):
+    """A blank base applies only when the person has nothing of their own."""
+    settings.create_user("owner", "owner-password")
+    settings.adopt_orphans("owner")
+    pid = settings.save_profile("mine", {"GATEWAY_URL": "http://mine:1",
+                                         "ORG_ID": "o", "WORKSPACE_ID": "w",
+                                         "API_TOKEN": "MINETOKEN9999"},
+                                owner="owner")
+    settings.activate_profile(pid, owner="owner")
+    c = _login(appmod.app.test_client(), "owner")
+    body = c.get(f"/settings?edit={pid}").get_data(as_text=True)
+    assert _form_value(body, "GATEWAY_URL") == "http://mine:1"
+    assert "••••9999" in body, "the owner still sees their own token hint"

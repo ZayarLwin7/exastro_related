@@ -1359,7 +1359,18 @@ def settings_page():
                   if wanted.isdigit() else None)
         if not request.args.get("new"):
             target = target or active
-    merged = {**settings.env_defaults(), **((target or {}).get("payload") or {}),
+    # A person with no profile of their own gets a blank form -- both the
+    # connection block and the credentials. Seeding it from env_defaults() would
+    # pre-fill the install's gateway, org, workspace and a "set · ••••1234" token
+    # hint: the founder's configuration, shown to a colleague who was only just
+    # added, and one keystroke from being saved into their profile.
+    if active is None and target is None:
+        base = {f["key"]: (False if f["kind"] == "bool" else "")
+                for f in settings.FIELDS}
+        base["CLIENT_ID"] = ""
+    else:
+        base = settings.env_defaults()
+    merged = {**base, **((target or {}).get("payload") or {}),
               **((draft or {}).get("values") or {})}
     cl = client_for(username)
     options = _id_options(cl)

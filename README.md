@@ -873,6 +873,12 @@ The first account to register is the exception: it adopts the pre-existing
 profiles and the `.env` seed, because on a fresh install that really is its own
 configuration.
 
+Their Settings form starts **completely empty** -- connection block and
+credentials both. It is not pre-filled from the install's values, and no token
+hint is shown, because those are the founder's: showing them to a colleague who
+was added five minutes ago is one keystroke away from saving them into somebody
+else's profile.
+
 **Creation history is per person too.** Your history card lists the runs *you*
 started, and another person's run id returns 404 rather than rendering. Runs
 recorded before logins existed are claimed by the first account that registers,
