@@ -5063,9 +5063,14 @@ def test_the_account_page_controls_match_the_movement_form(store):
     body = c.get("/settings/users").get_data(as_text=True)
     assert "select.input" in body, "the role picker should use the app's select"
     assert "appearance:none" in body, "and carry the same custom chevron"
-    # a secondary action is compact; the full-width treatment is for one main
-    # action on a page, and this page has three sections
-    assert ".btn{width:100%" not in body
+    # A secondary action is compact. Checked against the *base* .btn rule, not
+    # the page as a string: a scoped `.rowbtns .btn{width:100%}` is deliberate
+    # and fills a fixed-width column, so a blanket search would flag the very
+    # thing that keeps the profile boxes the same width.
+    base = re.search(r"(?<!\.)\s*\.btn\{([^}]*)\}", body)
+    assert base, "no base .btn rule found"
+    assert "width:100%" not in base.group(1), \
+        "the base button should be compact, not full-width"
 
 
 def test_logout_sits_in_the_top_right_of_every_signed_in_page(store):
@@ -5104,3 +5109,60 @@ def test_the_login_page_names_the_product_and_clears_its_own_messages(store):
     assert 'data-dismiss-ms="7000"' in body, "the message must expire by itself"
     assert "bannerFade" in body and "el.remove()" in body, \
         "it should fade and then leave no gap behind"
+
+
+def _profile_box_style(body: str) -> str:
+    m = re.search(r"\.grantrow\{([^}]*)\}", body)
+    return m.group(1) if m else ""
+
+
+def test_every_account_row_gets_the_same_profile_box(store):
+    """The controls are stacked so the box is identical on every row.
+
+    Laid out horizontally the button group was as wide as the widest role name,
+    which squeezed the profile list by a different amount on each row -- so two
+    rows showing the same thing looked like different kinds of row.
+    """
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    style = _profile_box_style(body)
+    # A fixed third column, not `auto`: `auto` is whatever the buttons need.
+    assert "132px" in style and "auto" not in style.split("132px")[-1], (
+        f"the controls column must be a fixed width, got: {style}")
+    assert "minmax(0,1fr)" in style, "the profile box should take the slack"
+    # and it is stacked, not a horizontal group
+    assert re.search(r"\.rowbtns\{[^}]*flex-direction:column", body), \
+        "the role/save/delete controls should stack vertically"
+
+
+def test_the_account_page_has_a_back_button_not_a_settings_link(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    assert 'class="backbtn" href="/settings"' in body, "no back button"
+    assert 'class="backlink" href="/settings"' not in body, \
+        "the back control should not be a bare link labelled Settings"
+
+
+def test_user_accounts_is_visible_on_the_settings_page(store):
+    """It is the admin's only route to user management, so it cannot be a
+    line of muted text between the title and the user chip."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings").get_data(as_text=True)
+    link = re.search(r'<a class="backlink" href="/settings/users"[^>]*>(.*?)</a>',
+                     body, re.S)
+    assert link, "no link to user accounts"
+    rule = re.search(r"\.backlink\{([^}]*)\}", body)
+    assert rule, "the link carries no styling of its own"
+    decl = rule.group(1)
+    assert "border-radius" in decl and "border:" in decl, \
+        "it should read as something to press, not as plain text"
+    assert "display:inline-flex" in decl
+    # and it is inside the bar, not tucked into the page body
+    header = re.search(r'<header class="appbar">.*?</header>', body, re.S).group(0)
+    assert "/settings/users" in header

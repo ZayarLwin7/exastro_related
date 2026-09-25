@@ -18,8 +18,8 @@
   .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
   .appbar .spacer{flex:1}
   .wrap{max-width:900px;margin:0 auto;padding:26px 34px 70px}
-  .backlink{color:var(--mut);text-decoration:none;font-size:12.5px;font-weight:600}
-  .backlink:hover{color:var(--txt)}
+  .backbtn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut);text-decoration:none;font-size:12px;font-weight:650}
+  .backbtn:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
   .useraction{display:flex;align-items:center;gap:8px}
   .userchip{display:inline-flex;align-items:center;max-width:180px;padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--txt);font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .logoutbtn{padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut);font-family:inherit;font-size:11.5px;font-weight:650;cursor:pointer}
@@ -46,9 +46,14 @@
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--mut);font-weight:600}
   .btn.ghost:hover{color:var(--txt)}
   .btn.warnbtn{background:transparent;border:1px solid rgba(var(--err-rgb),.4);color:var(--err-text)}
-  .rowbtns{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  /* Stacked, not side by side: laid out horizontally these buttons were as
+     wide as the widest role name, which squeezed the profile box a different
+     amount on every row. */
+  .rowbtns{display:flex;flex-direction:column;align-items:stretch;gap:7px;width:132px}
   form.inline{display:inline-flex;align-items:center;gap:7px}
-  .selrole{width:auto;padding:8px 32px 8px 12px;font-size:12.5px}
+  form.stack{display:flex;flex-direction:column;gap:7px}
+  .selrole{width:100%;padding:8px 30px 8px 11px;font-size:12.5px}
+  .rowbtns .btn{width:100%;text-align:center}
 
   /* Profiles are picked as a visible list, not a multi-select: a native
      multi-select hides the choices behind one click and gives no context. */
@@ -58,7 +63,10 @@
   .grant input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer}
   .grant .gname{font-weight:600}
   .grant .gwhere{color:var(--mut);font-size:11.5px;margin-left:auto;font-family:var(--mono);white-space:nowrap}
-  .grantrow{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+  .grantrow{display:grid;grid-template-columns:140px minmax(0,1fr) 132px;gap:14px;align-items:stretch;padding:11px 0;border-bottom:1px solid var(--line)}
+  /* A fixed minimum height, so a row with two profiles does not look like a
+     different kind of row from one with five. */
+  .grantrow .grantbox{min-height:78px;justify-content:center}
   .grantrow:last-child{border-bottom:0}
   .grantwho{font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   @media(max-width:860px){.grantrow{grid-template-columns:1fr}}
@@ -80,7 +88,7 @@
   </div>
   <div class="spacer"></div>
   {% if current_user %}
-  <a class="backlink" href="/settings">{{ t('settings_title') }}</a>
+  <a class="backbtn" href="/settings" title="{{ t('back') }}">&larr;<span>{{ t('back') }}</span></a>
   <div class="useraction">
     <span class="userchip" title="{{ t('signed_in_as', name=current_user) }}">{{ current_user }}</span>
     <form method="post" action="/logout" class="inline">
@@ -169,7 +177,7 @@
         {% endfor %}
       </form>
       <div class="rowbtns">
-        <form method="post" action="/settings/users/role" class="inline">
+        <form method="post" action="/settings/users/role" class="stack">
           <input type="hidden" name="username" value="{{ u.username }}">
           <select class="input selrole" name="role">
             {% for r in role_choices %}

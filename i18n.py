@@ -119,6 +119,7 @@ TEXT: dict[str, dict[str, str]] = {
         "en": "Only an admin can delete a profile.",
         "ja": "プロファイルの削除は管理者のみ実行できます。"},
     "save": {"en": "Save", "ja": "保存"},
+    "back": {"en": "Back", "ja": "戻る"},
     "brand_name": {"en": "Exastro One Click Creator",
                    "ja": "Exastro One Click Creator"},
     "users_new_hint": {
