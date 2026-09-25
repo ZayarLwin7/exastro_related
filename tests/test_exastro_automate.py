@@ -4711,12 +4711,50 @@ def test_apply_and_effective_agree_on_types(store, cfg_restore):
         "a value that types one way for config and another for a client is a trap"
 
 
-def test_a_new_user_with_no_profile_gets_a_page_not_a_crash(store, monkeypatch):
-    """Logging in for the first time, before setting up a profile, must work."""
-    settings.create_user("fresh", "fresh-password")
-    c = _login(appmod.app.test_client(), "fresh")
-    r = c.get("/")
-    assert r.status_code == 200, (
-        "an account with no profile of its own must still see the form")
-    body = r.get_data(as_text=True)
-    assert "<form" in body and "Internal Server Error" not in body
+def test_a_new_user_with_no_profile_is_sent_to_set_one_up(store, monkeypatch):
+    """A profile-less account must be told to configure itself.
+
+    The `.env` belongs to whoever installed the tool. Before this, a brand-new
+    account counted as "configured" because `is_configured({})` fell back to
+    those values -- so a colleague added later could write to Exastro through
+    the founder's credentials without ever setting anything up.
+    """
+    settings.create_user("founder", "founder-password")
+    settings.adopt_orphans("founder")
+    fp = settings.save_profile("founder-prod",
+                               {"GATEWAY_URL": "http://founder:1",
+                                "ORG_ID": "fo", "WORKSPACE_ID": "fw",
+                                "API_TOKEN": "FOUNDER-TOKEN"},
+                               owner="founder")
+    settings.activate_profile(fp, owner="founder")
+    settings.create_user("newcomer", "newcomer-password")
+
+    assert settings.own_effective("newcomer") is None, \
+        "a user with no profile must not resolve to the installer's values"
+
+    monkeypatch.setattr(cfg, "MOCK", False)     # the gate only runs in live mode
+    c = _login(appmod.app.test_client(), "newcomer")
+    r = c.get("/", follow_redirects=False)
+    assert r.status_code == 302, "an unconfigured account belongs on /settings"
+    assert "/settings" in r.headers["Location"]
+    body = c.get("/settings", follow_redirects=True).get_data(as_text=True)
+    assert "FOUNDER-TOKEN" not in body
+    assert "founder-prod" not in body, \
+        "the founder's profile must not be listed for a different person"
+
+
+def test_a_new_user_cannot_borrow_the_installers_client(store):
+    """The per-user client for a profile-less account aims at nothing."""
+    settings.create_user("founder", "founder-password")
+    settings.adopt_orphans("founder")
+    fp = settings.save_profile("founder-prod",
+                               {"GATEWAY_URL": "http://founder:1",
+                                "ORG_ID": "fo", "WORKSPACE_ID": "fw",
+                                "API_TOKEN": "FOUNDER-TOKEN"},
+                               owner="founder")
+    settings.activate_profile(fp, owner="founder")
+    settings.create_user("newcomer", "newcomer-password")
+    cl = appmod.client_for("newcomer")
+    assert cl._v("GATEWAY_URL") == "", \
+        "a profile-less client must not be pointed at somebody else's Exastro"
+    assert cl._v("API_TOKEN") == ""

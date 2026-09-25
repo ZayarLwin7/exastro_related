@@ -104,8 +104,15 @@ def client_for(username: str):
     cached = _user_clients.get(username)
     if cached is not None and cached[0] == signature:
         return cached[1]
-    profile_payload = (settings.own_active_profile(username) or {}).get("payload") or {}
-    effective = settings.effective(profile_payload)
+    effective = settings.own_effective(username)
+    if effective is None:
+        # No profile of their own. Every setting is present-and-blank rather than
+        # merely absent: an absent key would fall through to the process-wide
+        # config, which is the installer's. Blank is how this client says
+        # "this person has not set anything up yet".
+        effective = {f["key"]: (False if f["kind"] == "bool" else "")
+                     for f in settings.FIELDS}
+        effective["CLIENT_ID"] = ""
     # Derived URLs win over a blank/raw field, but every effective value stays
     # on this instance. settings.apply() is deliberately not called here.
     overrides = {**effective, **settings.derived(effective)}
@@ -115,7 +122,12 @@ def client_for(username: str):
         # callers can verify the same per-user resolution in mock mode.
         built._over = dict(overrides)
     else:
+        # Built with the plain signature and then flagged, so a caller that
+        # substitutes its own client class still works.
         built = ExastroClient(overrides)
+    # Set after construction: every later read of a setting must come from this
+    # person's profile, never from the shared config module.
+    built._profile_bound = True
     _user_clients[username] = (signature, built)
     return built
 
@@ -151,8 +163,7 @@ def _request_config() -> dict:
     username = current_user()
     if not username:
         return described
-    payload = (settings.own_active_profile(username) or {}).get("payload") or {}
-    values = settings.effective(payload)
+    values = settings.own_effective(username) or {}
     described.update({
         "gateway": values.get("GATEWAY_URL", ""),
         "org": values.get("ORG_ID", ""),
@@ -248,12 +259,19 @@ def require_target():
     if cfg.MOCK or request.path not in ITA_NEEDED:
         return None
     username = current_user()
-    payload = (settings.own_active_profile(username) or {}).get("payload") or {}
-    if settings.is_configured(payload):
+    # `own_effective` is None when this person has no profile of their own, and
+    # that is the answer rather than a fallback: the `.env` belongs to whoever
+    # installed this, and an account added later must not be allowed to write
+    # to Exastro through the founder's credentials.
+    values = settings.own_effective(username)
+    if values is not None and settings.is_configured(values):
         return None
-    missing = " / ".join(i18n.t(k, _lang())
-                         for k in settings.missing_labels(payload))
-    message = i18n.t("setup_needed", _lang(), fields=missing)
+    if values is None:
+        message = i18n.t("own_profile_missing", _lang())
+    else:
+        fields = " / ".join(i18n.t(k, _lang())
+                            for k in settings.missing_labels(values))
+        message = i18n.t("setup_needed", _lang(), fields=fields)
     if request.path.startswith("/api/"):
         return jsonify({"error": message}), 409
     flash(message, "error")
@@ -277,7 +295,9 @@ def inject_i18n():
 
     username = current_user()
     active = settings.own_active_profile(username) or {}
-    profile_values = settings.effective(active.get("payload") or {})
+    # No `.env` fallback here either: the header says where this person's writes
+    # are going, and a profile-less account goes nowhere until it sets one up.
+    profile_values = settings.own_effective(username) or {}
     return {
         "lang": lang,
         "t": t,
@@ -621,8 +641,7 @@ def catalogue(force: bool = False, cl=None, username: str | None = None) -> dict
         if (not force and cached is not None and cached[0] == signature
                 and now - cached[1] < _CATALOGUE_TTL):
             return cached[2]
-        payload = (settings.own_active_profile(username) or {}).get("payload") or {}
-        values = settings.effective(payload)
+        values = settings.own_effective(username) or {}
         data = {
             "packages": cl.role_choices(),
             "environments": cl.execution_environments(),
@@ -1135,13 +1154,14 @@ def healthz():
     username = current_user()
     if username and settings.get_user(username) is not None:
         active = settings.own_active_profile(username) or {}
-        payload = active.get("payload") or {}
-        values = settings.effective(payload)
+        values = settings.own_effective(username)
         return {"ok": True, "mock": cfg.MOCK,
-                "configured": settings.is_configured(payload),
-                "profile": active.get("name", "(.env defaults)"),
-                "gateway": values.get("GATEWAY_URL", ""),
-                "workspace": values.get("WORKSPACE_ID", "")}
+                # A profile-less account is "not configured" rather than
+                # silently borrowing whoever installed the `.env`.
+                "configured": bool(values) and settings.is_configured(values),
+                "profile": active.get("name", ""),
+                "gateway": (values or {}).get("GATEWAY_URL", ""),
+                "workspace": (values or {}).get("WORKSPACE_ID", "")}
     # Do not turn this deliberately unauthenticated endpoint into a way to
     # enumerate a user's profile or target.
     return {"ok": True, "mock": cfg.MOCK}

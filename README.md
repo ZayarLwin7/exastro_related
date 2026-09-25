@@ -862,6 +862,17 @@ would mean two prompts in front of one form. The old unlock/lock routes, the
 template and the translation strings are removed rather than left dormant. If
 `EXA_SETTINGS_PIN` is set in the environment it is simply no longer read.
 
+**A new account starts empty, on purpose.** When an admin adds someone, that
+person has no profile, so they land on Settings to create one. They do *not*
+inherit the install's `.env` values, and they do not inherit the founder's
+profile -- those belong to the person who set the tool up. Every page, API
+response, and health check reflects that person's own target, and a profile-less
+client is aimed at nothing rather than at somebody else's Exastro.
+
+The first account to register is the exception: it adopts the pre-existing
+profiles and the `.env` seed, because on a fresh install that really is its own
+configuration.
+
 **Creation history is per person too.** Your history card lists the runs *you*
 started, and another person's run id returns 404 rather than rendering. Runs
 recorded before logins existed are claimed by the first account that registers,

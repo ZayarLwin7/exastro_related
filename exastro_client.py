@@ -154,7 +154,8 @@ def _display_name(meta_entry: dict, key: str) -> str:
 class ExastroClient:
     """Thin wrapper over the ITA v2 organization API with token caching."""
 
-    def __init__(self, overrides: dict | None = None) -> None:
+    def __init__(self, overrides: dict | None = None,
+                 profile_bound: bool = False) -> None:
         self._access: str | None = None
         self._access_exp: float = 0.0
         # Per-instance values that win over the module-level `config`. Normally
@@ -162,6 +163,12 @@ class ExastroClient:
         # follows it. `probe_settings()` builds a throwaway client with a *draft*
         # profile here, so testing a connection cannot repoint a running one.
         self._over = dict(overrides or {})
+        # A client bound to one person's profile must never quietly inherit the
+        # process-wide config: a blank field there means "this person has not set
+        # it", not "fall back to whoever installed the .env". Without this, an
+        # account with no profile of its own was handed the founder's gateway
+        # and token because every override was blank.
+        self._profile_bound = profile_bound
         self.session = requests.Session()
         self.session.verify = self._v("VERIFY_TLS")
         # Optional map of JSON parameter key -> role variable name, set by a
@@ -177,10 +184,17 @@ class ExastroClient:
         self._identity: str | None = None
 
     def _v(self, name: str, default=None):
-        """Resolve a setting: this instance's override, else the live config."""
-        over = self._over.get(name)
-        if over is not None and over != "":
-            return over
+        """Resolve a setting: this instance's override, else the live config.
+
+        On a profile-bound client, a blank override is a real answer ("not set
+        for this person") rather than an invitation to read `config`. A key that
+        is absent altogether still falls back, which is what keeps derived
+        fields like CLIENT_ID working.
+        """
+        if name in self._over:
+            over = self._over[name]
+            if over is not None and (over != "" or self._profile_bound):
+                return over
         return getattr(cfg, name, default)
 
     @property

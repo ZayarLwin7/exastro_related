@@ -94,6 +94,13 @@ TEXT: dict[str, dict[str, str]] = {
         "ja": "ログイン中の自分自身のアカウントは削除できません。"},
     "admin_only": {"en": "Only an admin can manage user accounts.",
                    "ja": "ユーザーアカウントの管理は管理者のみ行えます。"},
+    "own_profile_missing": {
+        "en": "You do not have a connection profile yet. Create your own in "
+              "Settings -- each person's profiles are private, so nobody "
+              "else's target can be used here.",
+        "ja": "接続プロファイルがまだありません。設定で自分用のプロファイルを作成"
+              "してください。プロファイルはユーザーごとに非公開のため、他の"
+              "ユーザーの接続先は利用できません。"},
     "history_adopted": {
         "en": "Your {count} existing run(s) are now listed under your account.",
         "ja": "既存の {count} 件の実行履歴をあなたのアカウント名下に表示しています。"},

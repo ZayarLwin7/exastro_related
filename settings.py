@@ -499,6 +499,22 @@ def own_active_profile(username: str) -> dict | None:
     return _row_profile(row) if row else None
 
 
+def own_effective(username: str) -> dict | None:
+    """This user's resolved values, or None when they have no profile at all.
+
+    Deliberately does NOT fall back to `.env`. Those are the installer's
+    credentials, seeded once and adopted by the first account. A colleague
+    added later must set up a target of their own rather than silently write
+    to Exastro through the founder's token -- which is exactly what happened
+    when a brand-new account was treated as "configured" because the process
+    happened to have an .env.
+    """
+    profile = own_active_profile(username)
+    if profile is None:
+        return None
+    return effective(profile.get("payload") or {})
+
+
 def adopt_orphans(username: str) -> int:
     """Give every pre-user profile to the first registered app user."""
     username = _normalise_username(username)
