@@ -1602,7 +1602,7 @@ def _drop_grants_for(profile_id: int) -> None:
 
 @app.post("/settings/test")
 def settings_test():
-    """Probe a *draft* profile. Deliberately does not touch the active client.
+    """Probe a *draft* profile. Deliberately does not touch the active one.
 
     Catching every error here is the point: a failed probe against a host the
     operator is still configuring should be reported as text on the page, not as
@@ -1618,9 +1618,31 @@ def settings_test():
             # A blank secret means "the stored one" — the browser never held it.
             if not values.get(key) and stored.get(key):
                 values[key] = stored[key]
-    draft = {**values, **settings.derived(values)}
+    # Start from every field, blank. `_form_values()` drops anything left empty
+    # -- which is what a secret always looks like, because the browser is never
+    # sent one -- and an *absent* key is different from a blank one: `_v()`
+    # treats absent as "nothing was said" and falls through to the process-wide
+    # config. So a draft missing API_TOKEN silently used the token of whichever
+    # profile was last applied in this process, and testing somebody else's
+    # workspace was refused with "permission error" on credentials that were
+    # never wrong. Naming every field is what makes blank mean blank.
+    draft = {f["key"]: (False if f["kind"] == "bool" else "")
+             for f in settings.FIELDS}
+    draft.update(values)
+    draft.update(settings.derived(draft))
     try:
-        result = ExastroClient(draft).probe()
+        # `profile_bound` is not optional here. A secret the browser did not send
+        # arrives as a blank, and on an unbound client a blank falls through to
+        # the process-wide config -- which `settings.apply()` fills in whenever
+        # anybody edits a profile, and which outlives the request. Probing a
+        # colleague's profile then quietly used the installer's token: valid
+        # enough to sign in, refused for the workspace, and reported as
+        # "permission error" on credentials that were never wrong.
+        probe_client = ExastroClient(draft)
+        # Flagged after construction, as `client_for` does, so a substituted
+        # client class with the plain signature still works.
+        probe_client._profile_bound = True
+        result = probe_client.probe()
     except Exception as exc:
         flash(i18n.t("set_test_fail", lang, error=str(exc)), "error")
         return redirect("/settings")

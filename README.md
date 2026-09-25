@@ -898,6 +898,17 @@ your own profile and nowhere else; timeouts, menu names and the rest are shared
 setup and still inherit from the install. A profile that never set a token
 resolves to no token, so the password grant actually runs.
 
+**The connection probe never borrows another identity.** The subtler half of the
+403. `settings.apply()` writes the edited profile into the process-wide `config`
+module, and the service is one long-lived process, so that config carries
+whoever was saved last — for everybody, for as long as the service runs. A draft
+built only from submitted form fields contains no secrets, because the browser
+is never sent one, and *absent* is not the same as *blank*: a missing key reads
+as "nothing was said" and falls through to that shared config. Probing a
+colleague's profile therefore used the installer's token — valid enough to sign
+in, refused for the workspace — and blamed credentials that were never wrong. A
+draft now names every field, so blank means blank.
+
 A **403 `permission error`** is now explained rather than merely reported. The
 usual cause is a valid credential belonging to somebody else: Exastro accepts
 it at sign-in and then refuses the workspace, which looks identical to an

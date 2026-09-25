@@ -5371,3 +5371,117 @@ def test_a_403_says_what_to_look_at(store):
     assert "permission error" in text, "the server's own wording is kept"
     assert "belong to you" in text
     assert "_dat-api" in text, "it should name the client id this profile implies"
+
+
+def test_testing_a_connection_never_borrows_another_identitys_token(store,
+                                                                    monkeypatch):
+    """The 403 behind Test Connection.
+
+    `settings.apply()` writes the edited profile into the process-wide `config`
+    module, and the service is one long-lived process, so `cfg` carries whoever
+    was last saved -- for everybody, for ever. A draft built only from submitted
+    form fields omits every secret (the browser is never sent one), and an
+    *absent* key is not a blank one: `_v()` reads absent as "nothing was said"
+    and falls through to that shared config. So testing a colleague's profile
+    used the installer's token -- valid enough to sign in, refused for the
+    workspace -- and the error blamed credentials that were never wrong.
+    """
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(cfg, "API_TOKEN", "INSTALLER-TOKEN")
+    monkeypatch.setattr(cfg, "ORG_ID", "dat")
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("jidou", "jidou-password", role="coadmin")
+    pid = settings.save_profile("theirs", {
+        "GATEWAY_URL": "http://ita:1", "ORG_ID": "dat", "WORKSPACE_ID": "ws",
+        "USER": "their-user", "PASSWORD": "their-password"}, owner="jidou")
+
+    c = _login(appmod.app.test_client(), "jidou")
+    seen = {}
+
+    class Spy(appmod.ExastroClient):
+        def probe(self):
+            seen.update(token=self._v("API_TOKEN"), user=self._v("USER"),
+                        password=self._v("PASSWORD"), bound=self._profile_bound)
+            raise RuntimeError("stop before the network")
+
+    monkeypatch.setattr(appmod, "ExastroClient", Spy)
+    c.post("/settings/test", data={"profile_id": str(pid),
+                                   "field_GATEWAY_URL": "http://ita:1",
+                                   "field_ORG_ID": "dat",
+                                   "field_WORKSPACE_ID": "ws",
+                                   "field_USER": "their-user",
+                                   "field_PASSWORD": "", "field_API_TOKEN": ""},
+           follow_redirects=True)
+
+    assert seen, "the probe never ran"
+    assert seen["bound"] is True, "the draft must be profile-bound"
+    assert not seen["token"], \
+        "the probe fell back to the process-wide token of whoever was last saved"
+    assert seen["user"] == "their-user"
+    assert seen["password"] == "their-password", \
+        "a blank secret in the form means the stored one, and it was not used"
+
+
+def test_a_draft_names_every_field_so_blank_means_blank(store, monkeypatch):
+    """The half of the fix that is easy to undo by accident."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    captured = {}
+
+    class Spy(appmod.ExastroClient):
+        def probe(self):
+            captured["over"] = dict(self._over)
+            raise RuntimeError("stop")
+
+    # monkeypatch, not a bare assignment: the previous version left the module
+    # holding Spy for the rest of the session and broke every test after it.
+    monkeypatch.setattr(appmod, "ExastroClient", Spy)
+    c.post("/settings/test", data={"field_GATEWAY_URL": "http://ita:1",
+                                   "field_ORG_ID": "dat",
+                                   "field_WORKSPACE_ID": "ws"},
+           follow_redirects=True)
+    over = captured.get("over", {})
+    for field in settings.FIELDS:
+        assert field["key"] in over, \
+            f"{field['key']} is absent, which reads as 'use the shared config'"
+        # The derived fields are computed from the org, so they are meant to be
+        # populated; everything the operator did not type must be blank.
+        typed = ("GATEWAY_URL", "ORG_ID", "WORKSPACE_ID")
+        computed = set(settings.derived({}))
+        if field["key"] not in typed and field["key"] not in computed:
+            assert over[field["key"]] in ("", False), \
+                f"{field['key']} should be blank, not inherited"
+
+
+def test_the_environment_target_stays_inside_its_box(store):
+    """It is the least important text in the row, so it wraps before it spills
+    rather than pushing the list wider."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    rule = re.search(r"\.grant \.gwhere\{([^}]*)\}", body)
+    assert rule, "no rule for the environment target"
+    decl = rule.group(1)
+    assert "white-space:nowrap" not in decl, "it cannot wrap, so it overflows"
+    assert "overflow-wrap:anywhere" in decl, "a long unbroken target needs to break"
+    assert "max-width:100%" in decl, "it must not be allowed to exceed its box"
+    wrap = re.search(r"\.grant\{([^}]*)\}", body)
+    assert "flex-wrap:wrap" in wrap.group(1), \
+        "the target should drop to the next line when it does not fit"
+
+
+def test_the_product_name_sits_on_the_marks_centre_line(store):
+    """`align-items:center` aligns the text box, not the glyphs; a tight
+    line-height leaves the cap-height sitting low."""
+    settings.create_user("boss", "boss-password", role="admin")
+    c = appmod.app.test_client()
+    body = c.get("/login").get_data(as_text=True)
+    rule = re.search(r"\.brand\{([^}]*)\}", body)
+    assert rule
+    decl = rule.group(1)
+    assert "translateY(-2px)" in decl, "the name needs a nudge onto the centre"
+    row = re.search(r"\.logorow\{([^}]*)\}", body)
+    assert "align-items:center" in row.group(1)

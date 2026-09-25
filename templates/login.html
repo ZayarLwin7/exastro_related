@@ -19,7 +19,11 @@
   .logorow{display:flex;align-items:center;gap:12px;margin-bottom:15px}
   /* A little under the mark's height so the two read as one lockup, with the
      name optically centred against the mark rather than sat below it. */
-  .brand{font-size:16px;font-weight:800;letter-spacing:-.015em;color:var(--acc);line-height:1.2}
+  /* `align-items:center` aligns the text box, not the glyphs, and a tight
+     line-height makes the cap-height sit low. A small upward nudge puts the
+     name's optical centre on the mark's. */
+  .brand{font-size:16px;font-weight:800;letter-spacing:-.015em;color:var(--acc);
+    line-height:1.1;transform:translateY(-2px)}
   h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
   .lede{color:var(--mut);font-size:13.5px;line-height:1.6;margin-bottom:22px}
   .field{margin-bottom:16px}
