@@ -257,10 +257,23 @@ class ExastroClient:
                     f"Cannot reach token endpoint {self._v('TOKEN_URL')}: {exc}. "
                     f"Exastro may be busy — wait a few seconds and reload.") from exc
         if resp.status_code != 200:
-            raise ExastroError(
-                f"Token exchange failed ({resp.status_code}). Mint a fresh API "
-                f"token in the Platform UI and save it in Settings (or EXA_API_TOKEN)."
-            )
+            grant = data.get("grant_type", "unknown")
+            detail = ""
+            try:
+                detail = resp.json().get("error_description", resp.text[:200])
+            except Exception:
+                detail = resp.text[:200]
+            if grant == "refresh_token":
+                raise ExastroError(
+                    f"API token exchange failed ({resp.status_code}): {detail}. "
+                    f"Mint a fresh API token in the Platform UI and save it in "
+                    f"Settings (or EXA_API_TOKEN)."
+                )
+            else:
+                raise ExastroError(
+                    f"Login failed ({resp.status_code}, {grant}): {detail}. "
+                    f"Check the username, password and organization in Settings."
+                )
         body = resp.json()
         self._access = body.get("access_token")
         if not self._access:
