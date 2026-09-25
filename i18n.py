@@ -119,6 +119,21 @@ TEXT: dict[str, dict[str, str]] = {
         "en": "Only an admin can delete a profile.",
         "ja": "プロファイルの削除は管理者のみ実行できます。"},
     "save": {"en": "Save", "ja": "保存"},
+    "brand_name": {"en": "Exastro One Click Creator",
+                   "ja": "Exastro One Click Creator"},
+    "users_new_hint": {
+        "en": "A user can only use the profiles assigned to them; a co-admin can "
+              "create profiles of their own; an admin can do both and manage "
+              "accounts.",
+        "ja": "一般ユーザーは割り当てられたプロファイルのみ使用できます。副管理者は自分用"
+              "のプロファイルを作成でき、管理者は両方とアカウント管理が可能です。"},
+    "role_help": {
+        "en": "Pick a role, and tick the profiles this person may run against.",
+        "ja": "権限を選択し、そのユーザーが実行できるプロファイルにチェックします。"},
+    "accounts_and_roles": {"en": "Accounts and roles", "ja": "アカウントと権限"},
+    "no_profiles_yet": {
+        "en": "No profiles exist yet. Create one in Settings first.",
+        "ja": "プロファイルがまだありません。先に設定で作成してください。"},
     "role_saved": {"en": "Updated the role for '{name}'.", "ja": "「{name}」の権限を更新しました。"},
     "grants_saved": {"en": "Updated the assigned profiles for '{name}'.",
                      "ja": "「{name}」に割り当てるプロファイルを更新しました。"},

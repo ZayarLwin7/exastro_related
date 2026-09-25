@@ -912,7 +912,18 @@ Two rules that protect the install from itself: the last admin cannot be demoted
 or deleted, and an unknown account is treated as the least-privileged role
 rather than being trusted by default.
 
-**The sign-in page clears its own messages after 7 seconds.** A sign-in page is
+**The account page speaks the same visual language as the movement form.** Its
+selects use the same custom chevron, its buttons the same compact secondary
+treatment, and its header the same app bar. Profiles are offered as a visible
+checkbox list rather than a multi-select: a native multi-select hides the
+choices behind one click and shows no gateway, so two profiles pointing at
+different environments are indistinguishable. Each option names its target.
+
+Sign-out lives in the top-right of the app bar on every signed-in page, next to
+the name of who is signed in. On Settings the link to user accounts is a plain
+link rather than another button, so the bar does not read as a row of actions.
+
+The sign-in page names the product and clears its own messages after 7 seconds.** A sign-in page is
 reloaded constantly; a stale "wrong password" sitting on it is just noise.
 
 **Creation history is per person too.** Your history card lists the runs *you*

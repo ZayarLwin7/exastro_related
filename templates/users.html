@@ -9,57 +9,97 @@
 <link rel="stylesheet" href="/static/theme.css">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  /* Page padding belongs on .wrap, like every other page: setting it on body
-     is what the palette test exists to catch. */
-  .wrap{max-width:760px;margin:0 auto;padding:34px 34px 80px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 30px;margin-bottom:22px}
-  h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+  /* Same control language as the movement form, deliberately: two pages that
+     collect the same kind of input should not look like two different apps. */
+  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+  .logo svg{width:19px;height:19px}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar .spacer{flex:1}
+  .wrap{max-width:900px;margin:0 auto;padding:26px 34px 70px}
+  .backlink{color:var(--mut);text-decoration:none;font-size:12.5px;font-weight:600}
+  .backlink:hover{color:var(--txt)}
+  .useraction{display:flex;align-items:center;gap:8px}
+  .userchip{display:inline-flex;align-items:center;max-width:180px;padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--txt);font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .logoutbtn{padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut);font-family:inherit;font-size:11.5px;font-weight:650;cursor:pointer}
+  .logoutbtn:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px 26px;margin-bottom:20px}
   h2{font-size:15px;font-weight:700;margin-bottom:6px}
-  .lede{color:var(--mut);font-size:13px;line-height:1.6;margin-bottom:20px}
+  .lede{color:var(--mut);font-size:12.5px;line-height:1.6}
   .field{margin-bottom:14px}
   label{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin-bottom:7px}
-  .input{width:100%;padding:11px 13px;border-radius:12px;background:rgba(var(--field-rgb),.28);border:1px solid var(--line);color:var(--txt);font:inherit;font-size:14px}
-  .input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.18)}
-  .btn{display:inline-block;border:0;border-radius:12px;padding:11px 18px;font:inherit;font-size:13.5px;font-weight:700;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));cursor:pointer}
+  .input{width:100%;background:rgba(var(--field-rgb),.25);border:1px solid var(--line);border-radius:12px;padding:11px 14px;font-size:14px;color:var(--txt);font-family:inherit;transition:border-color .15s, box-shadow .15s, background .15s}
+  .input::placeholder{color:var(--dim)}
+  .input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 4px rgba(var(--acc-rgb),.18);background:rgba(var(--field-rgb),.35)}
+  /* the chevron comes from the movement form, so a select looks the same here */
+  select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 13px center;padding-right:34px;cursor:pointer}
+  select.input:hover{border-color:var(--line-strong)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:720px){.row2{grid-template-columns:1fr}}
+
+  /* Compact, like every secondary button in the app: the full-width 15px
+     treatment is reserved for the one thing a page is for. */
+  .btn{padding:9px 15px;border:0;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:none;transition:filter .15s}
+  .btn:hover{filter:brightness(1.06)}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--mut);font-weight:600}
-  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media(max-width:600px){.row2{grid-template-columns:1fr}}
-  table{width:100%;border-collapse:collapse;font-size:13.5px}
-  th{text-align:left;font-size:11.5px;font-weight:600;color:var(--mut);padding:0 10px 9px;border-bottom:1px solid var(--line)}
-  td{padding:11px 10px;border-bottom:1px solid var(--line)}
-  .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--acc-rgb),.14);color:var(--acc);margin-left:7px}
-  .you{color:var(--mut);font-size:11.5px;margin-left:6px}
+  .btn.ghost:hover{color:var(--txt)}
+  .btn.warnbtn{background:transparent;border:1px solid rgba(var(--err-rgb),.4);color:var(--err-text)}
+  .rowbtns{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  form.inline{display:inline-flex;align-items:center;gap:7px}
+  .selrole{width:auto;padding:8px 32px 8px 12px;font-size:12.5px}
+
+  /* Profiles are picked as a visible list, not a multi-select: a native
+     multi-select hides the choices behind one click and gives no context. */
+  .grantbox{display:flex;flex-direction:column;gap:2px;padding:5px;border:1px solid var(--line);border-radius:12px;background:rgba(var(--field-rgb),.18);max-height:190px;overflow:auto}
+  .grant{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;font-size:13px;color:var(--txt);cursor:pointer}
+  .grant:hover{background:rgba(var(--field-rgb),.35)}
+  .grant input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer}
+  .grant .gname{font-weight:600}
+  .grant .gwhere{color:var(--mut);font-size:11.5px;margin-left:auto;font-family:var(--mono);white-space:nowrap}
+  .grantrow{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+  .grantrow:last-child{border-bottom:0}
+  .grantwho{font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media(max-width:860px){.grantrow{grid-template-columns:1fr}}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--acc-rgb),.14);color:var(--acc);margin-left:6px}
+  .empty{color:var(--mut);font-size:12.5px;padding:10px 2px}
   .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
   .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
   .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
-  .grantbox{display:flex;flex-wrap:wrap;gap:8px 18px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(var(--field-rgb),.2)}
-  .grant{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--txt);cursor:pointer}
-  .grantrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
-  .grantwho{min-width:130px;font-weight:650;font-size:13px}
-  .grantrow .grantbox{flex:1}
-  .rolesel{width:auto;padding:6px 10px;font-size:12px;display:inline-block}
-  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-  .top a{color:var(--mut);text-decoration:none;font-size:13px}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <a href="/settings">&larr; {{ t('settings_title') }}</a>
-    <a href="/logout">{{ t('logout') }}</a>
+<header class="appbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
   </div>
+  <div>
+    <h1>{{ t('users_title') }}</h1>
+    <div class="subtitle">{{ t('users_lede') }}</div>
+  </div>
+  <div class="spacer"></div>
+  {% if current_user %}
+  <a class="backlink" href="/settings">{{ t('settings_title') }}</a>
+  <div class="useraction">
+    <span class="userchip" title="{{ t('signed_in_as', name=current_user) }}">{{ current_user }}</span>
+    <form method="post" action="/logout" class="inline">
+      <button class="logoutbtn" type="submit">{{ t('logout') }}</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+
+<div class="wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
 
   <div class="card">
-    <h1>{{ t('users_title') }}</h1>
-    <p class="lede">{{ t('users_lede') }}</p>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
-      {% endfor %}
-    {% endwith %}
-
     <h2>{{ t('users_new') }}</h2>
+    <p class="lede" style="margin-bottom:16px">{{ t('users_new_hint') }}</p>
     <form method="post" action="/settings/users/create">
       <div class="row2">
         <div class="field">
@@ -67,91 +107,88 @@
           <input class="input" id="username" name="username" type="text" minlength="3" autocomplete="off" autocapitalize="none" required>
         </div>
         <div class="field">
+          <label for="role">{{ t('role_label') }}</label>
+          <select class="input" id="role" name="role">
+            {% for r in role_choices %}
+            <option value="{{ r.code }}" {% if r.code == 'user' %}selected{% endif %}>{{ r.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
           <label for="password">{{ t('password') }}</label>
           <input class="input" id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
         </div>
+        <div class="field">
+          <label for="password_confirm">{{ t('confirm_password') }}</label>
+          <input class="input" id="password_confirm" name="password_confirm" type="password" minlength="8" autocomplete="new-password" required>
+        </div>
       </div>
-      <div class="field">
-        <label for="password_confirm">{{ t('confirm_password') }}</label>
-        <input class="input" id="password_confirm" name="password_confirm" type="password" minlength="8" autocomplete="new-password" required>
-      </div>
-      <div class="field">
-        <label for="role">{{ t('role_label') }}</label>
-        <select class="input" id="role" name="role">
-          {% for r in role_choices %}
-          <option value="{{ r.code }}" {% if r.code == 'user' %}selected{% endif %}>{{ r.label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% if grantable %}
       <div class="field">
         <label>{{ t('assigned_profiles') }}</label>
+        {% if grantable %}
         <div class="grantbox">
           {% for pr in grantable %}
-          <label class="grant"><input type="checkbox" name="grant_profile" value="{{ pr.id }}"> {{ pr.label }}</label>
+          <label class="grant">
+            <input type="checkbox" name="grant_profile" value="{{ pr.id }}">
+            <span class="gname">{{ pr.name }}</span>
+            <span class="gwhere">{{ pr.label_where }}</span>
+          </label>
           {% endfor %}
         </div>
-        <p class="lede" style="margin:8px 0 0">{{ t('assigned_profiles_hint') }}</p>
+        <p class="lede" style="margin-top:8px">{{ t('assigned_profiles_hint') }}</p>
+        {% else %}
+        <p class="empty">{{ t('no_profiles_yet') }}</p>
+        {% endif %}
       </div>
-      {% endif %}
       <button class="btn" type="submit">{{ t('users_new') }}</button>
     </form>
   </div>
 
   <div class="card">
-    <h2>{{ t('users_title') }}</h2>
-    {% if users %}
-    <table>
-      <thead><tr><th>{{ t('username') }}</th><th></th></tr></thead>
-      <tbody>
-        {% for u in users %}
-        <tr>
-          <td>
-            {{ u.username }}
-            {% if u.is_admin %}<span class="badge">{{ t('users_admin_badge') }}</span>{% endif %}
-            {% if u.username == me %}<span class="you">{{ t('users_you') }}</span>{% endif %}
-          </td>
-          <td style="text-align:right">
-            <form method="post" action="/settings/users/role" style="display:inline">
-              <input type="hidden" name="username" value="{{ u.username }}">
-              <select class="input rolesel" name="role">
-                {% for r in role_choices %}
-                <option value="{{ r.code }}" {% if r.code == u.role %}selected{% endif %}>{{ r.label }}</option>
-                {% endfor %}
-              </select>
-              <button class="btn sm" type="submit">{{ t('save') }}</button>
-            </form>
-            {% if u.username != me %}
-            <form method="post" action="/settings/users/delete" style="display:inline">
-              <input type="hidden" name="username" value="{{ u.username }}">
-              <button class="btn ghost" type="submit">{{ t('user_delete') }}</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <h2 style="margin-top:22px">{{ t('assigned_profiles') }}</h2>
-    <p class="lede">{{ t('assigned_profiles_hint') }}</p>
+    <h2>{{ t('accounts_and_roles') }}</h2>
+    <p class="lede" style="margin-bottom:12px">{{ t('role_help') }}</p>
     {% for u in users %}
-    <form method="post" action="/settings/users/grants" class="grantrow">
-      <input type="hidden" name="username" value="{{ u.username }}">
-      <div class="grantwho">{{ u.username }}</div>
-      <div class="grantbox">
-        {% for pr in grantable %}
-        <label class="grant"><input type="checkbox" name="grant_profile" value="{{ pr.id }}"
-          {% if pr.id in u.granted %}checked{% endif %}> {{ pr.label }}</label>
-        {% else %}
-        <span class="dim">{{ t('users_none') }}</span>
-        {% endfor %}
+    <div class="grantrow">
+      <div class="grantwho">
+        {{ u.username }}
+        {% if u.username == me %}<span class="badge">{{ t('users_you') }}</span>{% endif %}
       </div>
-      <button class="btn sm" type="submit">{{ t('save') }}</button>
-    </form>
-    {% endfor %}
+      <form method="post" action="/settings/users/grants" class="grantbox">
+        <input type="hidden" name="username" value="{{ u.username }}">
+        {% for pr in grantable %}
+        <label class="grant">
+          <input type="checkbox" name="grant_profile" value="{{ pr.id }}"
+                 {% if pr.id in u.granted %}checked{% endif %}>
+          <span class="gname">{{ pr.name }}</span>
+          <span class="gwhere">{{ pr.label_where }}</span>
+        </label>
+        {% else %}
+        <span class="empty">{{ t('no_profiles_yet') }}</span>
+        {% endfor %}
+      </form>
+      <div class="rowbtns">
+        <form method="post" action="/settings/users/role" class="inline">
+          <input type="hidden" name="username" value="{{ u.username }}">
+          <select class="input selrole" name="role">
+            {% for r in role_choices %}
+            <option value="{{ r.code }}" {% if r.code == u.role %}selected{% endif %}>{{ r.label }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn ghost" type="submit">{{ t('save') }}</button>
+        </form>
+        {% if u.username != me %}
+        <form method="post" action="/settings/users/delete" class="inline">
+          <input type="hidden" name="username" value="{{ u.username }}">
+          <button class="btn warnbtn" type="submit">{{ t('user_delete') }}</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
     {% else %}
-    <p class="lede">{{ t('users_none') }}</p>
-    {% endif %}
+    <p class="empty">{{ t('users_none') }}</p>
+    {% endfor %}
   </div>
 </div>
 </body>

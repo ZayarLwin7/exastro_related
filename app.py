@@ -948,9 +948,14 @@ def users_page():
     return render_template("users.html", users=settings.list_users(),
                            me=current_user(),
                            role_choices=role_choices,
-                           grantable=[{**pr, "label":
-                                       f"{pr['name']} · {pr['payload'].get('GATEWAY_URL', '')}"}
-                                      for pr in settings.list_profiles()])
+                           grantable=[
+                               {**pr, "label_where":
+                                " · ".join(x for x in
+                                           (pr["payload"].get("GATEWAY_URL", ""),
+                                            pr["payload"].get("ORG_ID", ""),
+                                            pr["payload"].get("WORKSPACE_ID", ""))
+                                           if x) or "—"}
+                               for pr in settings.list_profiles()])
 
 
 @app.post("/settings/users/create")

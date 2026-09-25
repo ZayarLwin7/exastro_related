@@ -5025,3 +5025,82 @@ def test_an_unknown_account_is_treated_as_the_least_privileged(store):
     assert settings.can_manage_profiles("nobody-at-all") is False
     assert settings.can_manage_users("nobody-at-all") is False
     assert settings.can_delete_profiles("nobody-at-all") is False
+
+
+# ---------------------------------------------------------------------------
+# account-management UI
+# ---------------------------------------------------------------------------
+
+def test_the_account_page_offers_profiles_as_a_list_not_a_multi_select(store):
+    """A native multi-select hides the choices behind one click and says nothing
+    about which profile points where, so an admin cannot tell two apart."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.save_profile("prod-env", {"GATEWAY_URL": "http://ita:4040",
+                                       "ORG_ID": "dat",
+                                       "WORKSPACE_ID": "dev_ws"},
+                          owner="boss")
+    settings.save_profile("test-env", {"GATEWAY_URL": "http://ita2:4040",
+                                       "ORG_ID": "dat",
+                                       "WORKSPACE_ID": "test_ws"},
+                          owner="boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    assert body.count('name="grant_profile"') >= 2
+    assert "<select" in body and "multiple" not in body, \
+        "profiles should be picked from a visible list, not a multi-select"
+    # each option says which environment it points at
+    assert "prod-env" in body and "test-env" in body
+    assert "dev_ws" in body and "test_ws" in body
+    assert "ita:4040" in body
+
+
+def test_the_account_page_controls_match_the_movement_form(store):
+    """Two pages collecting the same kind of input should not look like two apps."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings/users").get_data(as_text=True)
+    assert "select.input" in body, "the role picker should use the app's select"
+    assert "appearance:none" in body, "and carry the same custom chevron"
+    # a secondary action is compact; the full-width treatment is for one main
+    # action on a page, and this page has three sections
+    assert ".btn{width:100%" not in body
+
+
+def test_logout_sits_in_the_top_right_of_every_signed_in_page(store):
+    """One place to sign out from, always in the same corner."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    for path in ("/", "/settings", "/settings/users"):
+        body = c.get(path).get_data(as_text=True)
+        head = re.search(r'<header class="appbar">.*?</header>', body, re.S)
+        assert head, f"{path} has no app bar"
+        header = head.group(0)
+        assert 'action="/logout"' in header, f"logout is not in the bar on {path}"
+        # the user chip and the button sit at the end, after the spacer
+        assert header.index('class="spacer"') < header.index('action="/logout"'), \
+            f"logout is not in the right-hand group on {path}"
+
+
+def test_the_settings_page_keeps_accounts_out_of_the_button_pile(store):
+    """Navigating to user accounts is a link, not another action to click."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/settings").get_data(as_text=True)
+    assert 'class="backlink" href="/settings/users"' in body
+    assert 'class="logoutbtn"' in body, "logout uses the same pill as the other pages"
+
+
+def test_the_login_page_names_the_product_and_clears_its_own_messages(store):
+    settings.create_user("boss", "boss-password", role="admin")
+    c = appmod.app.test_client()
+    # followed, so the rendered response is the one carrying the flash
+    body = c.post("/login", data={"username": "boss", "password": "wrong"},
+                  follow_redirects=True).get_data(as_text=True)
+    assert "Exastro One Click Creator" in body
+    assert 'data-dismiss-ms="7000"' in body, "the message must expire by itself"
+    assert "bannerFade" in body and "el.remove()" in body, \
+        "it should fade and then leave no gap behind"
