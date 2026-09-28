@@ -1,7 +1,7 @@
 # Exastro_Automate
 
-A one-click **Ansible-LegacyRole** Movement builder for Exastro IT Automation
-(v2.8).
+**Exastro One Click Creator** -- a one-click **Ansible-LegacyRole** Movement
+builder for Exastro IT Automation (v2.8).
 
 Instead of hand-building a Movement, its Role link, a Parameter Sheet and the
 per-parameter substitution links in the ITA UI (long, and easy to get subtly
@@ -89,7 +89,7 @@ rather than being assumed away. Measured against the code, the whole footprint i
 | Link role package | `POST`/`PATCH .../<role_link_menu>/maintenance/` | POST + **PATCH** | create + edit |
 | Create **or re-apply** a parameter sheet | `GET /create/define/<sheet>/`, `POST /create/define/execute/` (`create_new` / `edit`) | GET + POST | read + create |
 | Bind parameters (substitution) | `POST`/`PATCH .../subst_value_auto_reg_setting_ansible_role/maintenance/` | POST + **PATCH** | create + edit |
-| Run history, Settings, PIN | local SQLite | — | none |
+| Run history, Settings, accounts | local SQLite | — | none |
 
 Two absences worth stating plainly:
 
@@ -638,7 +638,8 @@ GET /                                  -> 302 /settings?new=1
 
 From there:
 
-1. The new store asks you to **create the PIN** (there is none yet).
+1. The first account to sign up becomes the **admin**. There is no PIN: who
+   arrives first decides who administers the install.
 2. Fill in *Connection* and paste a token minted on **their** platform — then
    **Test connection**, which probes the draft without activating it.
 3. Tick *Make this the active environment* and save. Effective immediately.
@@ -654,27 +655,23 @@ demonstrated with no environment at all.
 Recover from a bad configuration by deleting `settings.db`; the copy goes back to
 "not set up" instead of aiming at a half-typed target.
 
-### PIN and secrets
+### Secrets
 
-Settings changes where data gets written and can spend your token, so the page
-is behind a PIN (`/settings` → *Unlock*):
+**Secrets never travel to the browser.** The token and password render as
+`set · ••••<last 4>` in an empty `type=password` field. Leaving one blank means
+*keep the stored one*; the checkbox next to it means *forget it*. A profile
+*lent* to a user strips the hint too — a "set · ••••1234" still says whose
+credential is in play, and being handed a profile is not being given the secret.
 
-* First run has **no** PIN, so whoever starts the app first chooses it. After
-  that it is required. `EXA_SETTINGS_PIN` overrides whatever is stored.
-* 5 wrong attempts lock the page for 60 seconds; the counter is in the database,
-  so restarting does not clear it.
-* Unlocking lasts 15 minutes, then the page re-arms. *Lock now* does it sooner.
-* **Secrets never travel to the browser.** The token and password render as
-  `set · ••••<last 4>` in an empty `type=password` field. Leaving one blank means
-  *keep the stored one*; the checkbox next to it means *forget it*.
-* `settings.db` is created mode `0600`. Anyone who can read that file can spend
-  the token — the PIN protects the UI, not the disk.
-* The session cookie signs an authorization decision now, so `app.secret_key` is
-  no longer a constant: `EXA_SECRET_KEY`, else a random value persisted in
-  `flask_secret.key` (0600).
+`settings.db` is created mode `0600`. Anyone who can read that file can spend
+the token, so the file mode is the real protection — the UI is not.
 
-The app itself still has no login: anyone who can reach `:9200` can create
-Movements. The PIN guards configuration, not the main form.
+The session cookie signs an authorization decision, so `app.secret_key` is not a
+constant: `EXA_SECRET_KEY`, else a random value persisted in `flask_secret.key`
+(0600).
+
+**There is a login, and it is the gate for everything.** Reaching `:9200` gets
+you the sign-in page and nothing else — see *Logins and per-person profiles*.
 
 
 ## The Role Package dropdown
@@ -780,7 +777,7 @@ What to copy and what to leave:
 | | |
 | --- | --- |
 | copy | `*.py`, `templates/`, `static/`, `requirements*.txt`, `restart.sh` |
-| leave behind | `creations.db` (the other environment's run history), `settings.db` (its PIN-locked profiles), `flask_secret.key`, `__pycache__`, `.server.log` |
+| leave behind | `creations.db` (the other environment's run history), `settings.db` (its profiles and accounts), `flask_secret.key`, `__pycache__`, `.server.log` |
 | bring over by hand | the gateway, org and workspace — as env vars or as a profile recreated in `/settings` |
 
 `flask_secret.key` is generated if missing, so a fresh copy works immediately;
@@ -954,8 +951,9 @@ Sign-out lives in the top-right of the app bar on every signed-in page, next to
 the name of who is signed in. On Settings the link to user accounts is a plain
 link rather than another button, so the bar does not read as a row of actions.
 
-The sign-in page names the product and clears its own messages after 7 seconds.** A sign-in page is
-reloaded constantly; a stale "wrong password" sitting on it is just noise.
+**The sign-in page names the product and clears its own messages after 7
+seconds.** A sign-in page is reloaded constantly; a stale "wrong password"
+sitting on it is just noise.
 
 **Creation history is per person too.** Your history card lists the runs *you*
 started, and another person's run id returns 404 rather than rendering. Runs
@@ -1015,8 +1013,9 @@ Four things the script handles because they are how this app actually breaks:
 After installing: `journalctl -u exastro-automate -f` for logs,
 `sudo systemctl restart exastro-automate` to bounce it, and **stop using
 `./restart.sh`** — it would start a second copy that cannot bind the port while
-systemd owns it. Keep `flask_secret.key` stable or the `/settings` PIN has to be
-re-entered after every restart, and put the two `.db` files in your backup set.
+systemd owns it. Keep `flask_secret.key` stable, or every signed-in session is
+invalidated on restart and everyone has to sign in again. Put the two `.db`
+files in your backup set: `settings.db` holds every stored credential.
 
 ### Tests
 
@@ -1024,7 +1023,7 @@ re-entered after every restart, and put the two `.db` files in your backup set.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-246 tests run against a fake that reproduces ITA's real response envelopes,
+321 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no
@@ -1064,23 +1063,42 @@ Full UI, dropdowns and all — every call simulated, no Exastro needed.
 | `EXA_UI_THEME` | `dark` | default palette, `dark` or `light`; the header switch stores it per session |
 | `EXA_MOCK` | `false` | simulate everything |
 | `EXA_SETTINGS_DB` | `settings.db` | profile store (overridden per test run) |
-| `EXA_SETTINGS_PIN` | — | overrides the stored Settings PIN |
 | `EXA_SECRET_KEY` | — | session signing key; generated into `flask_secret.key` if unset |
 | `EXA_SECRET_FILE` | `flask_secret.key` | where that key is persisted |
 
 ## Gotchas this codebase encodes
 
-These cost real debugging time; they are all verified against 2.8.0.
+These cost real debugging time; the ITA ones are all verified against 2.8.0.
 
-1. **`PATCH` requires `last_update_date_time` echoed back.** Omit it and ITA
+
+1. **Blank and absent are different things.** A setting that is *present and
+   empty* means "not set for this person". A setting that is *missing from the
+   overrides entirely* means "nothing was said", and falls through to the
+   process-wide config. Since the browser is never sent a secret, every draft
+   built from form fields was missing them -- so the connection probe quietly
+   used whichever token was last saved in the process. It signed in fine and
+   then failed authorisation, which looks exactly like bad credentials. Name
+   every field; do not rely on omission.
+
+2. **`settings.apply()` writes into a module, and the service is one long-lived
+   process.** So process-wide config carries whoever was saved last, for
+   everybody, until the next restart. Any client built for a specific person
+   must be profile-bound, or it will reach for it. This is why the bug above is
+   invisible from a script -- a fresh process has a clean config.
+
+
+3. **`PATCH` requires `last_update_date_time` echoed back.** Omit it and ITA
    answers `499-00201 last_update_date_time is invalid (None)`. The update paths
    used to strip that field *and* swallow the error, so a duplicate-looking POST
    was all anyone ever saw.
-2. **`/filter/` returns envelopes** (`{"file": {}, "parameter": {...}}`), not
+
+4. **`/filter/` returns envelopes** (`{"file": {}, "parameter": {...}}`), not
    rows. Reading them raw breaks every "does this already exist?" check — which
    is how duplicate movements with the same name got created, and why the UI
    then shows `Failed to exchange ID.`
-3. **A movement with no `ansible_agent_execution_environment` never gets role
+
+5. **A movement with no `ansible_agent_execution_environment` never gets role
    variables collected**, so not one parameter can bind.
-4. **Concurrency note:** linking a movement to a second role at the same
+
+6. **Concurrency note:** linking a movement to a second role at the same
    `include_order` is a duplicate, not an insert — it must be PATCHed.
