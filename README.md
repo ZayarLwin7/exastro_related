@@ -18,12 +18,78 @@ Parameters (JSON)      { "p_jobname": "JOB0000",
 
 ## What it creates
 
-| # | Exastro object | Menu (REST) | Driven by |
-|---|---|---|---|
-| 1 | Movement | `movement_list_ansible_role` | Movement Name **+ execution environment** |
-| 2 | Movement ↔ Role link | `movement_role_link` | `Package:Role` from the two dropdowns |
-| 3 | Parameter Sheet | `create/define/execute` | JSON keys become the columns |
-| 4 | Movement ↔ Parameter links | `subst_value_auto_reg_setting_ansible_role` | **one row per JSON key** |
+| # | Exastro object | Menu (REST) | Driven by | Default |
+|---|---|---|---|---|
+| 1 | Movement | `movement_list_ansible_role` | Movement Name **+ execution environment** | always |
+| 2 | Movement ↔ Role link | `movement_role_link` | `Package:Role` from the two dropdowns | always |
+| 3 | Parameter Sheet | `create/define/execute` | JSON keys become the columns | always |
+| 4 | Movement ↔ Parameter links | `subst_value_auto_reg_setting_ansible_role` | **one row per JSON key** | always |
+| 5 | Operation | `operation_list` | Movement + timestamp | toggle |
+| 6 | Input row | the Movement's own menu | the JSON values, addressed to a host group | toggle |
+| 7 | Conductor class | `conductor/class` | `start → movement → end` | toggle |
+
+The first four always happen. **5 and 6 are one switch** — *Create Operation and
+Input data* — because an operation with nothing to run it is not useful, and the
+input row is what gives the operation its host. **7 is a separate switch** —
+*Create Conductor* — because a Conductor is a reusable class you build once,
+whereas an operation is a single run. Details in
+[Operation and Input](#operation-and-input--the-optional-last-two-rows) and
+[Conductor](#conductor).
+
+### The JSON is the spreadsheet
+
+Everything between the JSON and ITA is automatic, and it is automatic *because*
+the sheet is read back first.
+
+Each JSON **key** becomes one parameter-sheet column. The key is the **logical
+name** — what the API, this tool's JSON and the role variables all address. The
+**display name** (the physical label a human reads, and what the substitution
+pulldown advertises) is filled in for you, as is the **type**, inferred from the
+value: a string is `SingleText`, an int `Num`, a float `Float`, a bool `True`/
+`False` as `SingleText`, an array or object `MultiText`.
+
+The moment a sheet name is typed, the grid is **prefilled from ITA itself**, so
+`Display name`, `Required` and `Unique` show what the sheet actually holds
+rather than what this page assumes:
+
+```
+Logical name    Type      Display name          Required   Unique
+p_jobname     [string]  [ジョブ名           ]   [ ]        [ ]
+p_dsnname     [string]  [DSN Name         ]   [x]        [ ]
+```
+
+`Required` and `Unique` are the sheet's own `required` / `uniqued` flags, enforced
+by ITA on the sheet's Input screen. They are separate fields rather than a `*`
+baked into a label, because a star in the display name would flow into the
+substitution item label and be indistinguishable from a real asterisk.
+
+**The override rule is the point of all this.** The page works out what you
+actually changed against that baseline, and only those fields are overlaid. A
+row left exactly as it arrived is echoed back with the values ITA already had --
+never with the grid's -- so re-running to change *values* cannot overwrite a
+label someone polished in the ITA UI.
+
+(Columns are echoed whole rather than omitted, because a column missing from an
+edit payload is a column ITA **deletes**. That is measured, not assumed, and it
+is why the page diffs instead of sending only what looks new.)
+
+Conversely:
+
+* un-ticking a prefilled `Required` **is** a difference, and sends
+  `{"required": false}`;
+* **clearing** a display name is a difference, and means *put the logical name
+  back* — a revert has to be expressible from the page, so it has to be
+  distinguishable from never having touched it;
+* a row that exists only because its key is in the JSON is sent whole.
+
+So the JSON gives you the shape, and the grid gives you the last word on the
+three attributes ITA lets you set. Both are in the same view; neither has to be
+re-typed.
+
+The full rule set -- what "blank" means in each of the four cases that exist, how
+rows are re-keyed, and what happens when the read-back is unavailable -- is in
+[Column names](#column-names-display-and-logical) and
+[Re-running the same parameter sheet](#re-running-the-same-parameter-sheet).
 
 The JSON **keys** become the parameter-sheet columns; the **values** infer the
 column type:
@@ -194,6 +260,9 @@ binding step refuses and names both columns instead of picking one.
 
 ### The grid
 
+> The short version is in [The JSON is the spreadsheet](#the-json-is-the-spreadsheet).
+> This section is the rule-by-rule detail.
+
 The JSON textarea is parsed as you type, and each key becomes a row:
 
 ```
@@ -206,9 +275,11 @@ p_dsnname     [string]  [DSN Name         ]   [x]        [ ]
   display name and the two flags are read back through `GET /api/sheet/<name>`
   (a thin wrapper over the definition read), so the grid shows what ITA holds
   rather than what the page assumes.
-* **Only differences from that baseline are sent.** A row left as it arrived adds
-  nothing to the payload, so a value-only re-run still cannot overwrite a label
-  someone polished in the ITA UI.
+* **Only the fields you changed are overlaid.** A row left as it arrived is
+  echoed back with ITA's own values, so a value-only re-run still cannot
+  overwrite a label someone polished in the ITA UI. Columns are echoed whole
+  rather than omitted, because a column absent from an edit payload is a column
+  ITA deletes (measured).
 * **A blank display name means the logical name.** Before the read existed, that
   sentence was a lie in the hint text, and the ambiguity was a live bug: a cleared
   box *and* a box typed with the logical name itself were both discarded, so
@@ -222,6 +293,13 @@ p_dsnname     [string]  [DSN Name         ]   [x]        [ ]
   enforced by ITA on the sheet's Input screen. They are separate fields, not a
   `*` baked into a label: a star in the display name would flow into the
   substitution item label and be indistinguishable from a real asterisk.
+* **Those two cannot be edited in place.** ITA refuses the *entire* edit --
+  values included -- if a payload carries them for a column that already exists;
+  it honours them only on a column that is new. Changing one therefore means
+  re-creating the column, which is why it is opt-in and warned about: the new
+  column keeps its logical name, label, class, default and order, but takes a
+  **new `create_column_id`**, and values already entered against the old column
+  record do not carry over.
 
 What "blank" means, in the four cases that exist — asked about directly, because
 the answer changed when the read arrived:
@@ -512,6 +590,52 @@ Two decisions worth stating:
 The toggle stays off when another system drives this tool — ServiceNow creates the
 operation and the input row itself (its rows carry `remarks: "ServiceNow"`), and a
 second pair would be the same work scheduled twice.
+
+## Conductor
+
+A **Conductor class** is the reusable thing in Exastro: a diagram, not a run.
+The toggle wires the Movement you just created into the smallest useful one --
+three nodes and two edges:
+
+```
+   ┌──────┐      ┌─────────┐      ┌────┐
+   │ start├─────►│ movement├─────►│ end│
+   └──────┘  line-1 └─────────┘ line-2└────┘
+```
+
+* `node-1` **start**, `node-3` **movement** (carrying `movement_id` and
+  `movement_name`), `node-2` **end** (`end_type: "6"`, the plain success exit).
+* `line-1` and `line-2` are the edges between them, so the Movement fires when
+  the class is invoked and the class ends when it returns.
+* Geometry (`x`, `y`, `w`, `h`), `grid_snap`, `movement_white_space`,
+  `nodeNumber`/`terminalNumber` are the values ITA's own editor writes for a
+  three-node graph, so the class opens in the editor already laid out instead of
+  stacked at the origin.
+
+The class is created **after** the Movement, and it needs the Movement's id --
+which the create call returns but ITA does not always expose immediately. If the
+id is not visible yet the step says so and names the remedy:
+
+```
+movement 'zos_submit' was created but its id is not visible yet --
+run again to create the conductor
+```
+
+That is a deliberate stop rather than a retry loop. The Movement is already
+created and correct at that point, so repeating the whole run would be refused
+as a duplicate. The Conductor is the only thing missing, and asking for it
+explicitly is safe.
+
+**Why it is a separate switch from Operation/Input.** An operation is one
+execution — it is dated, named with a timestamp, and consumed. A Conductor class
+is a *definition* you build once and invoke many times. Wiring every run to
+create a class would leave you with a directory of near-identical diagrams, and
+wiring the class into the operation would schedule the work twice.
+
+The button label follows the state rather than describing the action: with the
+toggle on it reads what will happen (*Create Conductor*), and the sub-text
+names the sequence, so you can tell `start → movement → end` from the form
+without opening anything.
 
 ## Settings: point it at any environment
 
