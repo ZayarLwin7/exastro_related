@@ -419,11 +419,25 @@ def save_creation(movement_name: str, role_name: str, sheet_name: str,
         return int(cur.lastrowid)
 
 
+def _history_scope(viewer: str) -> str | None:
+    """Whose runs this viewer may read: their own, or everybody's.
+
+    History is per person by design -- two people writing to one Exastro still
+    see only their own work. An admin is the exception, and it is a real one:
+    they are the ones who get asked "did this run, and what did it do" when
+    nobody else can answer. Scoping is decided here, once, so the list, the
+    count, the JSON feed and the detail page cannot disagree about it.
+    """
+    if settings.can_manage_users(viewer):
+        return None
+    return viewer
+
+
 def list_creations(limit: int = 10, offset: int = 0,
                    owner: str | None = None) -> list:
     """One page of runs, newest first. History itself is never trimmed."""
     sql = ("SELECT id, movement_name, role_name, sheet_name, status,"
-           " created_at, report_json FROM creations")
+           " created_at, report_json, owner FROM creations")
     args: list = []
     if owner is not None:
         sql += " WHERE owner = ?"
@@ -1046,9 +1060,24 @@ def index():
     # A run's Detail page offers "re-run with these parameters", which arrives
     # as query args; prefill so the form is ready to submit as-is.
     args = request.args
+    me = current_user()
+    # An admin may narrow to one person, and "all of them" is the default:
+    # the oversight question is usually "what has this account been doing".
+    who = (args.get("who") or "").strip()
+    scope = _history_scope(me)
+    if scope is None:
+        scope = who or None
     return render_template("index.html",
                            creations=paginate_creations(_page_arg(args),
-                                                        owner=current_user()),
+                                                        owner=scope),
+                           can_see_all=scope is None or bool(who),
+                           history_scope=scope,
+                           history_who=who,
+                           history_owners=sorted({
+                               r["owner"] for r in
+                               list_creations(limit=500, owner=None)
+                               if r["owner"]}) if _history_scope(me) is None
+                           else [],
                            cfg=_request_config(), catalogue=cat,
                            movement_name=args.get("movement_name", ""),
                            role_name=args.get("role_name", ""),
@@ -1252,7 +1281,7 @@ def favicon():
 @app.get("/creation/<int:creation_id>")
 def creation_detail(creation_id: int):
     """Full history of one run: every step, every parameter binding, as it happened."""
-    row = get_creation(creation_id, owner=current_user())
+    row = get_creation(creation_id, owner=_history_scope(current_user()))
     if row is None:
         abort(404)
     return render_template("detail.html", c=row, cfg=_request_config())
@@ -1272,8 +1301,11 @@ def api_creations():
         per_page = int(request.args.get("per_page") or 10)
     except (TypeError, ValueError):
         per_page = 10
-    page = paginate_creations(_page_arg(request.args), per_page,
-                              owner=current_user())
+    who = (request.args.get("who") or "").strip()
+    scope = _history_scope(current_user())
+    if scope is None:
+        scope = who or None
+    page = paginate_creations(_page_arg(request.args), per_page, owner=scope)
     return jsonify({
         "page": page["page"], "pages": page["pages"], "total": page["total"],
         "per_page": page["per_page"], "has_prev": page["has_prev"],
@@ -1282,6 +1314,9 @@ def api_creations():
             {"id": r["id"], "movement_name": r["movement_name"],
              "role_name": r["role_name"], "sheet_name": r["sheet_name"],
              "status": r["status"], "created_at": r["created_at"],
+             # the owner travels with the row so an admin reading the feed can
+             # tell whose run it is without opening each one
+             "owner": r["owner"],
              "has_detail": bool(r["report_json"]),
              "detail_url": f"/creation/{r['id']}"}
             for r in page["rows"]

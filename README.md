@@ -944,6 +944,24 @@ offers *Re-run with these parameters*.
 Rows written before this existed have no stored report; their Detail page says so
 instead of showing an empty table.
 
+**An admin reads everybody's history; nobody else does.** Per-person history is
+the default, because two people writing to one Exastro should still see only
+their own work. The admin is the exception and it is a real one: they are who
+gets asked *"did this run, and what did it do"* when nobody else can answer.
+
+For them the list carries an **Account** column, and a filter — because the
+oversight question is usually "what has *this* account been doing", not "what
+has everyone done". The account is a first-class column rather than something to
+go and look up per row, because a row you cannot attribute is a row you cannot
+act on. They can open any run's Detail page, and the runs recorded before
+logins existed are labelled as predating them rather than shown as blank.
+
+A **co-admin does not get this.** Supervising profiles is not supervising
+people; the line stays where the roles table puts it. And the filter cannot be
+used to widen anyone's view: for anybody who is not entitled to the whole list,
+`?who=` is ignored and they get their own rows.
+
+
 ### Double-submission guard
 
 A run takes ~10–30 s because Exastro collects role variables asynchronously, so
@@ -1147,7 +1165,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-324 tests run against a fake that reproduces ITA's real response envelopes,
+330 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no

@@ -4581,9 +4581,12 @@ def test_two_users_never_share_a_client_target(mock_client, store):
 
 def test_history_lists_only_your_own_runs(mock_client, store):
     settings.create_user("workmate", "workmate-password")
-    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="testuser")
-    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="workmate")
-    page = mock_client.get("/").get_data(as_text=True)
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="workmate")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="testuser")
+    # Viewed as `workmate`, who is not an admin. `testuser` is the first
+    # account and therefore an admin, so checking isolation through them would
+    # be checking the opposite of what the row below claims.
+    page = _login(mock_client, "workmate").get("/").get_data(as_text=True)
     assert "mine-one" in page
     assert "theirs-one" not in page, \
         "a shared ITA account must not mean a shared list of everyone's runs"
@@ -4592,10 +4595,10 @@ def test_history_lists_only_your_own_runs(mock_client, store):
 def test_the_counts_and_pager_agree_with_the_visible_rows(mock_client, store):
     settings.create_user("workmate", "workmate-password")
     for i in range(15):
-        appmod.save_creation(f"mine-{i}", "p:r", f"s{i}", "OK", owner="testuser")
+        appmod.save_creation(f"mine-{i}", "p:r", f"s{i}", "OK", owner="workmate")
     for i in range(40):
-        appmod.save_creation(f"theirs-{i}", "p:r", f"t{i}", "OK", owner="workmate")
-    page = mock_client.get("/").get_data(as_text=True)
+        appmod.save_creation(f"theirs-{i}", "p:r", f"t{i}", "OK", owner="testuser")
+    page = _login(mock_client, "workmate").get("/").get_data(as_text=True)
     assert "mine-14" in page
     assert "theirs-0" not in page, "a workmate's rows must not leak in"
     # the pager is built from the same filtered count, so it cannot offer a
@@ -4607,9 +4610,13 @@ def test_another_persons_run_detail_is_not_readable(mock_client, store):
     """Asking for someone else's run id must 404, not merely hide the link."""
     settings.create_user("workmate", "workmate-password")
     cid = appmod.save_creation("secret-run", "p:r", "s", "OK", owner="workmate")
-    r = mock_client.get(f"/creation/{cid}")
+    # Viewed by someone who is neither the owner nor an admin. `testuser` is the
+    # first account and so an admin, for whom seeing this run is the point.
+    settings.create_user("plainviewer", "viewer-password", role="user")
+    c = _login(mock_client, "plainviewer")
+    r = c.get(f"/creation/{cid}")
     assert r.status_code == 404, "the detail page must not render another user's run"
-    api = mock_client.get(f"/api/creations")
+    api = c.get(f"/api/creations")
     assert "secret-run" not in api.get_data(as_text=True)
 
 
@@ -5561,3 +5568,74 @@ def test_no_client_call_reads_a_config_field_from_the_module():
     bad = sorted({m for m in re.findall(r"\bcfg\.([A-Z_][A-Z0-9_]*)", real)
                   if m in field_keys})
     assert not bad, f"read from the module instead of the instance: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# an admin reads everybody's run history
+# ---------------------------------------------------------------------------
+
+def test_an_admin_sees_everyones_runs(mock_client, store):
+    """Oversight is the job. They are the ones asked "did this run, and what did
+    it do" when nobody else can answer."""
+    settings.create_user("workmate", "workmate-password")
+    settings.create_user("another", "another-password", role="coadmin")
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="testuser")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="workmate")
+    appmod.save_creation("co-one", "p:r", "s", "OK", owner="another")
+    page = mock_client.get("/").get_data(as_text=True)
+    for name in ("mine-one", "theirs-one", "co-one"):
+        assert name in page, f"an admin should see {name}"
+    # and told whose each one is, without having to open it
+    assert "workmate" in page and "another" in page
+
+
+def test_a_non_admin_still_sees_only_their_own(mock_client, store):
+    settings.create_user("workmate", "workmate-password")
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="workmate")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="testuser")
+    page = _login(mock_client, "workmate").get("/").get_data(as_text=True)
+    assert "mine-one" in page
+    assert "theirs-one" not in page
+    # no account column, because there is only ever one account in this list
+    assert "Account" not in page
+
+
+def test_a_coadmin_does_not_gain_oversight_from_being_told(mock_client, store):
+    """Supervising profiles is not supervising people."""
+    settings.create_user("deputy", "deputy-password", role="coadmin")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="testuser")
+    page = _login(mock_client, "deputy").get("/").get_data(as_text=True)
+    assert "theirs-one" not in page, "a co-admin is still a person, not an admin"
+
+
+def test_an_admin_can_open_a_run_they_did_not_start(mock_client, store):
+    settings.create_user("workmate", "workmate-password")
+    cid = appmod.save_creation("secret-run", "p:r", "s", "OK", owner="workmate")
+    r = mock_client.get(f"/creation/{cid}")
+    assert r.status_code == 200, "oversight has to reach the detail page"
+    assert "secret-run" in r.get_data(as_text=True)
+
+
+def test_an_admin_can_narrow_history_to_one_account(mock_client, store):
+    """The question that actually gets asked: what has *this* account done."""
+    settings.create_user("workmate", "workmate-password")
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="testuser")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="workmate")
+    page = mock_client.get("/?who=workmate").get_data(as_text=True)
+    assert "theirs-one" in page
+    assert "mine-one" not in page, "the filter should narrow, not widen"
+    # and the person asking can get back to the full list
+    assert "Show all" in page
+
+
+def test_the_filter_cannot_be_used_to_widen_someone_elses_history(
+        mock_client, store):
+    """`who` is honoured only for somebody entitled to the whole list; for
+    everyone else it must not become a way to name another account."""
+    settings.create_user("workmate", "workmate-password")
+    appmod.save_creation("mine-one", "p:r", "s", "OK", owner="workmate")
+    appmod.save_creation("theirs-one", "p:r", "s", "OK", owner="testuser")
+    page = _login(mock_client, "workmate").get("/?who=testuser")
+    page = page.get_data(as_text=True)
+    assert "theirs-one" not in page
+    assert "mine-one" in page, "a non-admin still gets their own list"

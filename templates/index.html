@@ -447,13 +447,31 @@
         <span class="count" title="{{ t('runs_kept', n=pager.per_page) }}">
           {{ t('runs_1' if pager.total == 1 else 'runs_n', n=pager.total) }}</span>
       </div>
+      {% if history_owners %}
+      {# An admin reads this list for oversight, and the question is usually
+         "what has this account been doing" -- so the account is a first-class
+         column and a filter, not something to go and look up per row. #}
+      <form class="whofilter" method="get" action="/">
+        <span class="whorabel">{{ t('history_whose') }}</span>
+        <select class="input" name="who" onchange="this.form.submit()">
+          <option value="">{{ t('history_all_users') }}</option>
+          {% for o in history_owners %}
+          <option value="{{ o }}" {{ 'selected' if o == history_who }}>{{ o }}</option>
+          {% endfor %}
+        </select>
+        {% if history_who %}<a class="whoclear" href="/">{{ t('history_show_all') }}</a>{% endif %}
+      </form>
+      {% endif %}
       {% if pager.rows %}
       <div class="tblwrap">
       <table class="tbl">
-        <thead><tr><th>{{ t('th_movement') }}</th><th>{{ t('th_status') }}</th><th>{{ t('th_when') }}</th><th></th></tr></thead>
+        <thead><tr>{% if can_see_all %}<th class="owncol">{{ t('th_account') }}</th>{% endif %}<th>{{ t('th_movement') }}</th><th>{{ t('th_status') }}</th><th>{{ t('th_when') }}</th><th></th></tr></thead>
         <tbody>
           {% for c in pager.rows %}
             <tr>
+              {% if can_see_all %}
+              <td class="owncol"><span class="ownchip" title="{{ t('th_account') }}">{{ c['owner'] or t('history_unowned') }}</span></td>
+              {% endif %}
               <td><span class="name">{{ c['movement_name'] }}</span><div class="dim" style="font-size:11px">{{ c['sheet_name'] }}</div></td>
               <td><span class="status {{ c['status'] }}">{{ STATUS_TEXT.get(c['status'], c['status']) }}</span></td>
               <td><span class="ts">{{ c['created_at'] | when }}</span></td>
