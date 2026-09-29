@@ -632,10 +632,10 @@ class ExastroClient:
         uploaded rather than Git-synced. The numeric id is stable, so resolve the
         label from the account's own pulldown and keep the literal as fallback.
         """
-        opts = self._pulldown(cfg.FILE_LINK_MENU).get("link_file_type") or {}
-        wanted = [self._label(opts, cfg.FILE_LINK_ROLE_TYPE_ID,
-                              cfg.FILE_LINK_ROLE_TYPE)]
-        wanted += [cfg.FILE_LINK_ROLE_TYPE, "Role package list",
+        opts = self._pulldown(self._v("FILE_LINK_MENU")).get("link_file_type") or {}
+        wanted = [self._label(opts, self._v("FILE_LINK_ROLE_TYPE_ID"),
+                              self._v("FILE_LINK_ROLE_TYPE"))]
+        wanted += [self._v("FILE_LINK_ROLE_TYPE"), "Role package list",
                    "ロールパッケージ管理"]
         return [w for w in dict.fromkeys(wanted) if w]
 
@@ -650,7 +650,7 @@ class ExastroClient:
         """
         wanted = self._wanted_link_types()
         out = []
-        for row in self.filter_records(cfg.FILE_LINK_MENU):
+        for row in self.filter_records(self._v("FILE_LINK_MENU")):
             ltype = str(row.get("link_file_type") or "")
             if wanted and not any(w in ltype for w in wanted):
                 continue
@@ -671,7 +671,7 @@ class ExastroClient:
         This is the authoritative list — it is ITA's own pulldown, so anything
         in it is guaranteed to validate on write.
         """
-        opts = self._pulldown(cfg.ROLE_LINK_MENU).get("role_package_name_role_name", {})
+        opts = self._pulldown(self._v("ROLE_LINK_MENU")).get("role_package_name_role_name", {})
         return sorted({str(v) for v in opts.values()})
 
     def role_choices(self) -> list[dict]:
@@ -704,7 +704,7 @@ class ExastroClient:
 
     def execution_environments(self) -> list[str]:
         """Ansible execution environments selectable on a movement."""
-        opts = self._pulldown(cfg.MOVEMENT_MENU).get("ansible_agent_execution_environment", {})
+        opts = self._pulldown(self._v("MOVEMENT_MENU")).get("ansible_agent_execution_environment", {})
         values = [str(v) for v in opts.values()]
         # Keep the platform default last: it rarely has the role runtime on it.
         values.sort(key=lambda v: (v.startswith("~["), v.lower()))
@@ -714,8 +714,8 @@ class ExastroClient:
         """Pick the execution environment to record on a new movement."""
         available = self.execution_environments()
         if not available:
-            return requested or cfg.EXEC_ENV
-        for candidate in (requested, cfg.EXEC_ENV):
+            return requested or self._v("EXEC_ENV")
+        for candidate in (requested, self._v("EXEC_ENV")):
             if candidate and candidate in available:
                 return candidate
         # A configured env that vanished (workspace changed) would be rejected
@@ -731,7 +731,7 @@ class ExastroClient:
         token (401-00001).
         """
         prefix = f"{movement_name}{cfg.ROLE_PKG_SEP}"
-        opts = self._pulldown(cfg.SUBST_MENU).get("variable_name", {})
+        opts = self._pulldown(self._v("SUBST_MENU")).get("variable_name", {})
         return sorted({str(v)[len(prefix):] for v in opts.values()
                        if str(v).startswith(prefix)})
 
@@ -746,7 +746,7 @@ class ExastroClient:
         variables found — possibly a superset of `expected`, possibly short.
         """
         expected = set(expected or [])
-        timeout = cfg.VAR_TIMEOUT if timeout is None else timeout
+        timeout = self._v("VAR_TIMEOUT") if timeout is None else timeout
         interval = max(1, cfg.VAR_INTERVAL if interval is None else interval)
         deadline = time.time() + max(0, timeout)
         found: list[str] = []
@@ -760,7 +760,7 @@ class ExastroClient:
 
     def _find_movement(self, movement_name: str) -> dict | None:
         """The live (non-discarded) movement row with this name, if any."""
-        for row in self.filter_records(cfg.MOVEMENT_MENU):
+        for row in self.filter_records(self._v("MOVEMENT_MENU")):
             if str(row.get("movement_name")) == movement_name \
                     and str(row.get("discard")) != "1":
                 return row
@@ -779,14 +779,14 @@ class ExastroClient:
         params = {
             "movement_name": movement_name,
             "orchestrator": self.orchestrator_label(),
-            "header_section": cfg.HEADER_SECTION,
+            "header_section": self._v("HEADER_SECTION"),
             "host_specific_format": self.host_format_label(),
             "ansible_agent_execution_environment": execution_env,
             "remarks": "Created by Exastro_Automate",
         }
         existing = self._find_movement(movement_name)
         if existing is None:
-            return self._upsert(cfg.MOVEMENT_MENU, params, {"movement_name": movement_name})
+            return self._upsert(self._v("MOVEMENT_MENU"), params, {"movement_name": movement_name})
 
         current = str(existing.get("ansible_agent_execution_environment") or "")
         if execution_env and current == execution_env:
@@ -794,7 +794,7 @@ class ExastroClient:
         if not execution_env:
             return f"exists: movement '{movement_name}'"
 
-        pk = existing.get("movement_id") or self._pk(existing, cfg.MOVEMENT_MENU)
+        pk = existing.get("movement_id") or self._pk(existing, self._v("MOVEMENT_MENU"))
         merged = {k: v for k, v in existing.items()
                   if k not in ("movement_id", "uuid", "item_no",
                                "last_updated_user")}
@@ -803,7 +803,7 @@ class ExastroClient:
             merged["orchestrator"] = self.orchestrator_label()
 
         if pk:
-            url = f"{self._api}/menu/{cfg.MOVEMENT_MENU}/maintenance/{pk}/"
+            url = f"{self._api}/menu/{self._v("MOVEMENT_MENU")}/maintenance/{pk}/"
             body = self._request("PATCH", url, json={"parameter": merged, "file": {}})
             return (f"updated: movement '{movement_name}' -> env {execution_env}"
                     f" ({self._result(body)})")
@@ -829,14 +829,14 @@ class ExastroClient:
         if selectable and role_name not in selectable:
             packages = sorted({r.partition(":")[0] for r in selectable})
             return (f"FAIL: role '{role_name}' is not selectable on "
-                    f"{cfg.ROLE_LINK_MENU}. Known packages: {', '.join(packages)}")
+                    f"{self._v("ROLE_LINK_MENU")}. Known packages: {', '.join(packages)}")
         params = {
             "movement": movement_name,
             "role_package_name_role_name": role_name,
             "include_order": include_order,
             "remarks": "Created by Exastro_Automate",
         }
-        return self._upsert(cfg.ROLE_LINK_MENU, params, {"movement": movement_name})
+        return self._upsert(self._v("ROLE_LINK_MENU"), params, {"movement": movement_name})
 
 
     @staticmethod
@@ -905,20 +905,20 @@ class ExastroClient:
             "menu": {
                 "menu_name": sheet_name,
                 "menu_name_rest": sheet_name,
-                "sheet_type": self._label(sheet_types, cfg.SHEET_TYPE_ID,
+                "sheet_type": self._label(sheet_types, self._v("SHEET_TYPE_ID"),
                                           "Parameter Sheet(Host/Operation)"),
-                "sheet_type_id": cfg.SHEET_TYPE_ID,
-                "menu_group_for_input": self._label(groups, cfg.MENU_GROUP_INPUT_ID, "Input"),
-                "menu_group_for_input_id": cfg.MENU_GROUP_INPUT_ID,
-                "menu_group_for_ref": self._label(groups, cfg.MENU_GROUP_REF_ID, "Reference"),
-                "menu_group_for_ref_id": cfg.MENU_GROUP_REF_ID,
-                "menu_group_for_subst": self._label(groups, cfg.MENU_GROUP_SUBST_ID,
+                "sheet_type_id": self._v("SHEET_TYPE_ID"),
+                "menu_group_for_input": self._label(groups, self._v("MENU_GROUP_INPUT_ID"), "Input"),
+                "menu_group_for_input_id": self._v("MENU_GROUP_INPUT_ID"),
+                "menu_group_for_ref": self._label(groups, self._v("MENU_GROUP_REF_ID"), "Reference"),
+                "menu_group_for_ref_id": self._v("MENU_GROUP_REF_ID"),
+                "menu_group_for_subst": self._label(groups, self._v("MENU_GROUP_SUBST_ID"),
                                                     "Substitution value"),
-                "menu_group_for_subst_id": cfg.MENU_GROUP_SUBST_ID,
+                "menu_group_for_subst_id": self._v("MENU_GROUP_SUBST_ID"),
                 "hostgroup": "1",
                 "vertical": "0",
                 "display_order": 1,
-                "role_list": self.grantable_roles(cfg.ADMIN_ROLE),
+                "role_list": self.grantable_roles(self._v("ADMIN_ROLE")),
                 "columns": col_list,
             },
             "column": columns,
@@ -978,7 +978,13 @@ class ExastroClient:
                         note += ". Sent value was refused for one of the option " \
                                 "columns; check the Advanced group in Settings"
                     return note
-            if "role_list" in msg or "admin role" in msg.lower():
+            # ITA names the field `role_name` in this refusal, not `role_list`,
+            # so matching only the name it uses in the payload meant the one
+            # message that needed explaining most was the one that fell through
+            # to the generic report. Match the *situation* instead: a refused
+            # value is a refused value, whatever the field is called.
+            if (_contains_any(msg, ("role_list", "role_name", "admin role"))
+                    or "invalid value" in msg.lower() and "role" in msg.lower()):
                 # Nothing left to retry: the request already asked for no real
                 # administrator, so only the operator can pick a grantable role.
                 return (f"create/define/execute failed: this account cannot assign "
@@ -1324,9 +1330,9 @@ class ExastroClient:
 
     def registration_method_label(self) -> str:
         """The display value this account must send for its registration method."""
-        opts = self._pulldown(cfg.SUBST_MENU).get("registration_method") or {}
-        return self._label(opts, cfg.SUBST_REGISTRATION_METHOD_ID,
-                           cfg.SUBST_REGISTRATION_METHOD)
+        opts = self._pulldown(self._v("SUBST_MENU")).get("registration_method") or {}
+        return self._label(opts, self._v("SUBST_REGISTRATION_METHOD_ID"),
+                           self._v("SUBST_REGISTRATION_METHOD"))
 
     def orchestrator_label(self) -> str:
         """The `orchestrator` display value for this account (id 3 = Legacy Role).
@@ -1334,8 +1340,8 @@ class ExastroClient:
         This one is not translated on 2.8, but it is the same class of column —
         validated by display string — so it is resolved rather than hardcoded.
         """
-        opts = self._pulldown(cfg.MOVEMENT_MENU).get("orchestrator") or {}
-        return self._label(opts, cfg.ORCHESTRATOR_ID, cfg.ORCHESTRATOR)
+        opts = self._pulldown(self._v("MOVEMENT_MENU")).get("orchestrator") or {}
+        return self._label(opts, self._v("ORCHESTRATOR_ID"), self._v("ORCHESTRATOR"))
 
     def host_format_label(self) -> str:
         """The `host_specific_format` display value for this account.
@@ -1344,9 +1350,9 @@ class ExastroClient:
         'ホスト名' for a Japanese one. Only id 1 ('IP') happens to be identical,
         which is why the hardcoded literal appeared to work.
         """
-        opts = self._pulldown(cfg.MOVEMENT_MENU).get("host_specific_format") or {}
-        return self._label(opts, cfg.HOST_SPECIFIC_FORMAT_ID,
-                           cfg.HOST_SPECIFIC_FORMAT)
+        opts = self._pulldown(self._v("MOVEMENT_MENU")).get("host_specific_format") or {}
+        return self._label(opts, self._v("HOST_SPECIFIC_FORMAT_ID"),
+                           self._v("HOST_SPECIFIC_FORMAT"))
 
     def _sheet_column_names(self, sheet_name: str) -> dict:
         """{logical name: display name} for one sheet, {} if unreadable.
@@ -1428,7 +1434,7 @@ class ExastroClient:
         '利用できない値です' for every key. Reading the real options fixes it for
         both locales at once and also reveals which columns actually exist.
         """
-        opts = self._pulldown(cfg.SUBST_MENU).get("menu_group_menu_item") or {}
+        opts = self._pulldown(self._v("SUBST_MENU")).get("menu_group_menu_item") or {}
         out: dict[str, str] = {}
         for value in opts.values():
             parts = str(value).split(":")
@@ -1496,7 +1502,7 @@ class ExastroClient:
         A key with no matching role variable is reported as `missing_variable`
         so the role or the JSON can be corrected.
         """
-        subst_menu = cfg.SUBST_MENU
+        subst_menu = self._v("SUBST_MENU")
         subst_sheet = f"{sheet_name}_subst"
         variable_map = self._variable_map or {}
         targets = {key: variable_map.get(key) or key for key in params}
@@ -1691,10 +1697,10 @@ class ExastroClient:
         except ExastroError:
             pass
         # one pulldown call serves several fields when they share a menu
-        for column, menu in (("orchestrator", cfg.MOVEMENT_MENU),
-                             ("host_specific_format", cfg.MOVEMENT_MENU),
-                             ("registration_method", cfg.SUBST_MENU),
-                             ("link_file_type", cfg.FILE_LINK_MENU)):
+        for column, menu in (("orchestrator", self._v("MOVEMENT_MENU")),
+                             ("host_specific_format", self._v("MOVEMENT_MENU")),
+                             ("registration_method", self._v("SUBST_MENU")),
+                             ("link_file_type", self._v("FILE_LINK_MENU"))):
             if column in out:
                 continue
             try:
@@ -1746,7 +1752,7 @@ class ExastroClient:
 
     def host_groups(self) -> list[dict]:
         """Selectable host groups as [{name, id}], in the install's own order."""
-        rows = [r for r in self.filter_records(cfg.HOSTGROUP_MENU)
+        rows = [r for r in self.filter_records(self._v("HOSTGROUP_MENU"))
                 if str(r.get("discard") or "0") != "1"]
         rows.sort(key=lambda r: (str(r.get("priority") or "9"),
                                  str(r.get("hostgroup_name") or "").casefold()))
@@ -1767,7 +1773,7 @@ class ExastroClient:
         """
         want = (group or "").strip().casefold()
         hosts = [str(r.get("hostname") or "").strip()
-                 for r in self.filter_records(cfg.HOST_LINK_MENU)
+                 for r in self.filter_records(self._v("HOST_LINK_MENU"))
                  if str(r.get("discard") or "0") != "1"
                  and str(r.get("hostgroup_name") or "").strip().casefold() == want]
         return sorted({h for h in hosts if h}, key=str.casefold)
@@ -1850,7 +1856,7 @@ class ExastroClient:
                 "movement_id": movement_id,
                 "movement_name": movement_name,
                 "operation_id": None,
-                "orchestra_id": cfg.ORCHESTRATOR_ID,
+                "orchestra_id": self._v("ORCHESTRATOR_ID"),
                 "skip_flag": 0, "w": 290.859,
                 "x": 7900, "y": 7921,
                 "terminal": {
@@ -1900,7 +1906,7 @@ class ExastroClient:
         while True:
             attempt += 1
             try:
-                self._maintenance(cfg.OPERATION_MENU, {
+                self._maintenance(self._v("OPERATION_MENU"), {
                     "operation_name": name,
                     "scheduled_date_for_execution": scheduled,
                     "remarks": remarks})
@@ -1912,10 +1918,10 @@ class ExastroClient:
                 if attempt >= 5 or not self._is_duplicate(exc, "operation_name"):
                     raise
                 name = f"{base}{string.ascii_lowercase[attempt - 1]}"
-        for row in self.filter_records(cfg.OPERATION_MENU):
+        for row in self.filter_records(self._v("OPERATION_MENU")):
             if row.get("operation_name") == name:
                 stored = str(row.get("scheduled_date_for_execution") or "")
-                return {"name": name, "operation_id": self._pk(row, cfg.OPERATION_MENU) or "",
+                return {"name": name, "operation_id": self._pk(row, self._v("OPERATION_MENU")) or "",
                         "scheduled": stored,
                         "select": self._select_label(stored, name)}
         raise ExastroError(

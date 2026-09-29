@@ -5489,3 +5489,75 @@ def test_the_product_name_sits_on_the_marks_centre_line(store):
         f"a {lift.group(1)}px nudge is too small to line the cap-height up"
     row = re.search(r"\.logorow\{([^}]*)\}", body)
     assert "align-items:center" in row.group(1)
+
+
+def test_the_sheet_admin_role_is_read_from_the_persons_profile(store,
+                                                             monkeypatch):
+    """The 499 that started this.
+
+    `grantable_roles` was passed `cfg.ADMIN_ROLE` -- the process-wide module --
+    while every other setting on the request came from the instance. A blank
+    resolves to the caller's own account name, so a profile with no admin role
+    set sent `hime-dev-user` as a role grant, and the workspace answered 499
+    "The input value is an invalid value". The profile *had* the right role in
+    it the whole time; nobody was reading it.
+    """
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(cfg, "ADMIN_ROLE", "")      # what the process holds
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    pid = settings.save_profile("p", {"GATEWAY_URL": "http://ita:1",
+                                      "ORG_ID": "dat", "WORKSPACE_ID": "ws",
+                                      "ADMIN_ROLE": "_dev_ws-admin",
+                                      "USER": "hime-dev-user"},
+                               owner="boss")
+    settings.activate_profile(pid, owner="boss")
+    client = appmod.client_for("boss")
+    assert client._v("ADMIN_ROLE") == "_dev_ws-admin"
+    # Asserted through the payload builder, because that is where the wrong
+    # read was. Calling grantable_roles by hand would pass while the request
+    # itself still used the module.
+    client._display_choices = lambda: {"sheet_type": {}, "menu_group": {}}
+    payload = client._create_define_payload("ai_test_playbook",
+                                            {"p_jobname": "JOB0000"})
+    sent = payload["menu"]["role_list"]
+    assert sent == ["_dev_ws-admin"], (
+        "the sheet's admin grant must come from the profile, not the module; "
+        f"it sent {sent}")
+    assert client.grantable_roles(client._v("ADMIN_ROLE")) == ["_dev_ws-admin"],         "the sheet's admin grant must come from the profile, not the module"
+
+
+def test_a_refused_role_grant_is_reported_as_one(store, monkeypatch):
+    """ITA calls the field `role_name` in this refusal, so matching only the
+    payload's own spelling let the one message worth explaining fall through."""
+    monkeypatch.setattr(cfg, "MOCK", False)
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    client = appmod.client_for("boss")
+
+    ita = ('{"role_name": ["The input value is an invalid value.'
+           '(input value:hime-dev-user)"]}')
+
+    def refuse(method, url, **kw):
+        raise ExastroError(f"POST {url} -> HTTP 499: {ita}")
+
+    monkeypatch.setattr(client, "_request", refuse)
+    message = client.create_parameter_sheet("ai_test_playbook",
+                                            {"p_jobname": "JOB0000"})
+    assert "cannot assign an admin role" in message,         f"the refusal should be explained, got: {message[:160]}"
+    assert "hime-dev-user" in message, "and it should name what it tried"
+
+
+def test_no_client_call_reads_a_config_field_from_the_module():
+    """The class of bug, guarded at the source.
+
+    `cfg.X` inside the real client is fine for a value nobody configures, but
+    every field in FIELDS is per-person: reading the module means the last
+    applied profile, or a stale empty default, answers instead.
+    """
+    src = (ROOT / "exastro_client.py").read_text(encoding="utf-8")
+    real = src[:src.index("class MockExastroClient")]
+    field_keys = {f["key"] for f in settings.FIELDS}
+    bad = sorted({m for m in re.findall(r"\bcfg\.([A-Z_][A-Z0-9_]*)", real)
+                  if m in field_keys})
+    assert not bad, f"read from the module instead of the instance: {bad}"

@@ -1147,7 +1147,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-321 tests run against a fake that reproduces ITA's real response envelopes,
+324 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no
@@ -1195,7 +1195,16 @@ Full UI, dropdowns and all — every call simulated, no Exastro needed.
 These cost real debugging time; the ITA ones are all verified against 2.8.0.
 
 
-1. **Blank and absent are different things.** A setting that is *present and
+1. **A per-person client must never read `cfg` for anything configurable.** The
+   real client had 48 such reads. All were correct when the process had one
+   target and `settings.apply()` wrote the active profile into the module; with
+   per-user clients that no longer happens, so the module answers with whatever
+   was applied last -- or a stale empty default. The sheet's admin role grant
+   read `cfg.ADMIN_ROLE`, got blank, and a blank resolves to the caller's own
+   account name, so a username went out as a role grant and the workspace
+   answered 499. The profile held the right role throughout. A source-level test
+   now fails on any `cfg.<field>` inside the real client.
+2. **Blank and absent are different things.** A setting that is *present and
    empty* means "not set for this person". A setting that is *missing from the
    overrides entirely* means "nothing was said", and falls through to the
    process-wide config. Since the browser is never sent a secret, every draft
@@ -1204,25 +1213,30 @@ These cost real debugging time; the ITA ones are all verified against 2.8.0.
    then failed authorisation, which looks exactly like bad credentials. Name
    every field; do not rely on omission.
 
-2. **`settings.apply()` writes into a module, and the service is one long-lived
+
+3. **`settings.apply()` writes into a module, and the service is one long-lived
    process.** So process-wide config carries whoever was saved last, for
    everybody, until the next restart. Any client built for a specific person
    must be profile-bound, or it will reach for it. This is why the bug above is
    invisible from a script -- a fresh process has a clean config.
 
 
-3. **`PATCH` requires `last_update_date_time` echoed back.** Omit it and ITA
+
+4. **`PATCH` requires `last_update_date_time` echoed back.** Omit it and ITA
    answers `499-00201 last_update_date_time is invalid (None)`. The update paths
    used to strip that field *and* swallow the error, so a duplicate-looking POST
    was all anyone ever saw.
 
-4. **`/filter/` returns envelopes** (`{"file": {}, "parameter": {...}}`), not
+
+5. **`/filter/` returns envelopes** (`{"file": {}, "parameter": {...}}`), not
    rows. Reading them raw breaks every "does this already exist?" check — which
    is how duplicate movements with the same name got created, and why the UI
    then shows `Failed to exchange ID.`
 
-5. **A movement with no `ansible_agent_execution_environment` never gets role
+
+6. **A movement with no `ansible_agent_execution_environment` never gets role
    variables collected**, so not one parameter can bind.
 
-6. **Concurrency note:** linking a movement to a second role at the same
+
+7. **Concurrency note:** linking a movement to a second role at the same
    `include_order` is a duplicate, not an insert — it must be PATCHed.
