@@ -5596,8 +5596,12 @@ def test_a_non_admin_still_sees_only_their_own(mock_client, store):
     page = _login(mock_client, "workmate").get("/").get_data(as_text=True)
     assert "mine-one" in page
     assert "theirs-one" not in page
-    # no account column, because there is only ever one account in this list
-    assert "Account" not in page
+    # No account column, because there is only ever one account in this list --
+    # and no filter, since there is nothing to choose between. Asserted on the
+    # elements, not the word: a bare "Account" also matches the label, the
+    # translation table and a comment in the stylesheet.
+    assert 'class="owncol"' not in page
+    assert 'class="whofilter"' not in page
 
 
 def test_a_coadmin_does_not_gain_oversight_from_being_told(mock_client, store):
@@ -5723,3 +5727,29 @@ def test_paging_keeps_the_account_filter(store):
     assert "theirs-19" in page2, "page two should still be workmate's runs"
     assert "mine-25" not in page2, "and nobody else's"
     assert "theirs-29" not in page2, "nor a repeat of the first page"
+
+
+def test_the_account_filter_label_matches_the_card_heading(store):
+    """It had no rule at all, so the word rendered as plain body text directly
+    beside a 15px heading and read as an unstyled leftover."""
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    heading = re.search(r"\.listcard \.head h2\{([^}]*)\}", body)
+    label = re.search(r"\.whorabel\{([^}]*)\}", body)
+    assert heading, "no rule for the card heading"
+    assert label, "the filter label has no rule at all"
+    h2_size = re.search(r"font-size:([^;}]+)", heading.group(1)).group(1).strip()
+    label_size = re.search(r"font-size:([^;}]+)", label.group(1)).group(1).strip()
+    assert label_size == h2_size, (
+        f"the label is {label_size}, the heading is {h2_size}")
+    assert "font-weight:700" in label.group(1), "and it should carry the weight"
+
+
+def test_the_filter_is_separated_from_the_table(store):
+    """The heading above it already has a margin; two stacked ones read as a
+    single gap, so the filter row carries the space itself."""
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    rule = re.search(r"\.whofilter\{([^}]*)\}", body)
+    assert rule, "the filter row has no rule"
+    decl = rule.group(1)
+    assert re.search(r"margin:\s*0 0 [1-9]\d*px", decl), (
+        "the filter needs its own space above the table")
