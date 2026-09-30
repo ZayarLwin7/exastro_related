@@ -933,6 +933,16 @@ Three things worth knowing before the first run in a Japanese environment:
 If the gateway is HTTPS behind a private CA, `certifi` will not contain that root —
 set `REQUESTS_CA_BUNDLE=/path/to/corp-root.pem` rather than editing the pins.
 
+### The header
+
+Every signed-in page carries the same app bar, and it **wraps** rather than
+overflows. A header that reflows stays readable at any width; one that overflows
+pushes the sign-out button off the side of the screen, which is the one control
+nobody can afford to lose. The title is bounded, the environment pill truncates
+a long workspace name, and the identity group and theme switch are pinned so
+they are never the thing that shrinks — a sign-out button squeezed to an
+ellipsis is a sign-out button nobody can find.
+
 ### Run history
 
 Every run is recorded in `creations.db` with its **full report** — each step,
@@ -951,7 +961,10 @@ gets asked *"did this run, and what did it do"* when nobody else can answer.
 
 For them the list carries an **Account** column, and a filter — because the
 oversight question is usually "what has *this* account been doing", not "what
-has everyone done". The account is a first-class column rather than something to
+has everyone done". The filter is one dropdown whose first option is *All
+accounts*; a second link saying the same thing is another thing to read, and the
+two can disagree. Paging keeps the filter, so page two of an account's runs is
+still that account's runs. The account is a first-class column rather than something to
 go and look up per row, because a row you cannot attribute is a row you cannot
 act on. They can open any run's Detail page, and the runs recorded before
 logins existed are labelled as predating them rather than shown as blank.
@@ -1165,7 +1178,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-330 tests run against a fake that reproduces ITA's real response envelopes,
+335 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no

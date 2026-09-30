@@ -5624,8 +5624,25 @@ def test_an_admin_can_narrow_history_to_one_account(mock_client, store):
     page = mock_client.get("/?who=workmate").get_data(as_text=True)
     assert "theirs-one" in page
     assert "mine-one" not in page, "the filter should narrow, not widen"
-    # and the person asking can get back to the full list
-    assert "Show all" in page
+    # the way back to the full list is the dropdown's own "All accounts" --
+    # a second control saying the same thing is just another thing to read
+    assert "All accounts" in page
+    assert "Show all" not in page
+
+
+def test_paging_does_not_drop_the_account_filter(mock_client, store):
+    """It did: page two of a filtered list was the whole list again, so the
+    filter looked like it had quietly stopped working."""
+    settings.create_user("workmate", "workmate-password")
+    for i in range(30):
+        appmod.save_creation(f"theirs-{i:02}", "p:r", "s", "OK", owner="workmate")
+    for i in range(30):
+        appmod.save_creation(f"mine-{i:02}", "p:r", "s", "OK", owner="testuser")
+    page = mock_client.get("/?who=workmate").get_data(as_text=True)
+    assert "theirs-29" in page and "theirs-00" not in page
+    # `&` is HTML-escaped in the attribute, which is correct.
+    assert "?page=2&amp;who=workmate" in page, (
+        "the pager must carry the filter, or page two is somebody else's list")
 
 
 def test_the_filter_cannot_be_used_to_widen_someone_elses_history(
@@ -5639,3 +5656,70 @@ def test_the_filter_cannot_be_used_to_widen_someone_elses_history(
     page = page.get_data(as_text=True)
     assert "theirs-one" not in page
     assert "mine-one" in page, "a non-admin still gets their own list"
+
+
+def test_every_app_bar_wraps_rather_than_overflowing(store):
+    """A header that reflows is readable at any width. One that overflows puts
+    the sign-out button off the side of the screen, which is the one control
+    nobody can afford to lose."""
+    for tpl in ("index.html", "settings.html", "users.html",
+                "detail.html", "result.html"):
+        body = (ROOT / "templates" / tpl).read_text(encoding="utf-8")
+        rule = re.search(r"\.appbar\{([^}]*)\}", body)
+        assert rule, f"{tpl} has no app bar rule"
+        decl = rule.group(1)
+        assert "flex-wrap:wrap" in decl, \
+            f"{tpl}: the bar cannot reflow, so a long title breaks the layout"
+        assert 'class="bartitle"' in body, \
+            f"{tpl}: the title is unbounded and pushes the controls off the end"
+        assert "min-width:0" in body, \
+            f"{tpl}: a flex child without min-width:0 will not shrink"
+
+
+def test_the_environment_pill_cannot_push_controls_off_the_edge(store):
+    """A workspace name can be long, and a pill that does so is worse than one
+    that names itself briefly."""
+    body = (ROOT / "templates" / "settings.html").read_text(encoding="utf-8")
+    rule = re.search(r"\.pill\{([^}]*)\}", body)
+    assert rule
+    decl = rule.group(1)
+    assert "max-width" in decl and "text-overflow:ellipsis" in decl
+    # and the controls that must survive the squeeze are pinned
+    assert re.search(r"\.appbar \.themesw\{[^}]*flex:0 0 auto", body), \
+        "the theme switch must not be the thing that shrinks"
+    assert re.search(r"\.useraction\{[^}]*flex:0 0 auto", body), \
+        "the identity group must not be split across lines"
+
+
+def test_the_account_filter_offers_one_way_back_not_two(store):
+    """The dropdown already has 'All accounts'. A second control saying the
+    same thing is another thing to read, and the two can disagree."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/?who=boss").get_data(as_text=True)
+    assert "All accounts" in body
+    assert "Show all" not in body
+    assert "history_show_all" not in i18n.TEXT, "the key is now unused"
+
+
+def test_paging_keeps_the_account_filter(store):
+    """It did not, so page two of a filtered list was the whole list again and
+    the filter looked like it had quietly stopped working."""
+    settings.create_user("boss", "boss-password", role="admin")
+    settings.adopt_orphans("boss")
+    settings.create_user("workmate", "workmate-password")
+    for i in range(30):
+        appmod.save_creation(f"theirs-{i:02}", "p:r", "s", "OK", owner="workmate")
+    for i in range(30):
+        appmod.save_creation(f"mine-{i:02}", "p:r", "s", "OK", owner="boss")
+    c = _login(appmod.app.test_client(), "boss")
+    body = c.get("/?who=workmate").get_data(as_text=True)
+    assert "theirs-29" in body
+    assert "?page=2&amp;who=workmate" in body, "the pager must carry the filter"
+    # and following it really does stay filtered. Newest first, so the second
+    # page of ten is theirs-19 downwards.
+    page2 = c.get("/?page=2&who=workmate").get_data(as_text=True)
+    assert "theirs-19" in page2, "page two should still be workmate's runs"
+    assert "mine-25" not in page2, "and nobody else's"
+    assert "theirs-29" not in page2, "nor a repeat of the first page"

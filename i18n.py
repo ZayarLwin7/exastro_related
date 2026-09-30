@@ -350,7 +350,6 @@ TEXT: dict[str, dict[str, str]] = {
     "th_account": {"en": "Account", "ja": "アカウント"},
     "history_whose": {"en": "Account", "ja": "アカウント"},
     "history_all_users": {"en": "All accounts", "ja": "全アカウント"},
-    "history_show_all": {"en": "Show all", "ja": "すべて表示"},
     "history_unowned": {"en": "(predates logins)", "ja": "（ログイン導入前）"},
     "th_movement": {"en": "Movement", "ja": "作業実行"},
     "th_status": {"en": "Status", "ja": "状態"},

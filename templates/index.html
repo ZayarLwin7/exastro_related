@@ -10,7 +10,8 @@
 <style>
 
   *{box-sizing:border-box;margin:0;padding:0}
-  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .appbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 14px;padding:18px 34px;border-bottom:1px solid var(--line)}
+  .bartitle{min-width:0;flex:1 1 200px}
   .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
   .logo svg{width:22px;height:22px}
   .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -223,7 +224,7 @@
   <div class="logo">
     <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
   </div>
-  <div>
+  <div class="bartitle">
     <h1>{{ t('app_name') }}</h1>
     <div class="subtitle">{{ t('app_subtitle') }}</div>
   </div>
@@ -459,7 +460,6 @@
           <option value="{{ o }}" {{ 'selected' if o == history_who }}>{{ o }}</option>
           {% endfor %}
         </select>
-        {% if history_who %}<a class="whoclear" href="/">{{ t('history_show_all') }}</a>{% endif %}
       </form>
       {% endif %}
       {% if pager.rows %}
@@ -489,23 +489,23 @@
         <span class="range">{{ t('range', start=pager.start, end=pager.end, total=pager.total) }}</span>
         <div class="pages">
           {% if pager.has_prev %}
-          <a class="pgbtn" href="/?page={{ pager.page - 1 }}" rel="prev">‹</a>
+          <a class="pgbtn" href="/?page={{ pager.page - 1 }}{{ '&who=' ~ history_who if history_who }}" rel="prev">‹</a>
           {% else %}<span class="pgbtn off">‹</span>{% endif %}
           {% if 1 not in pager.window %}
-          <a class="pgnum" href="/?page=1">1</a><span class="gap">…</span>
+          <a class="pgnum" href="/?page=1{{ '&who=' ~ history_who if history_who }}">1</a><span class="gap">…</span>
           {% endif %}
           {% for n in pager.window %}
             {% if n == pager.page %}
             <span class="pgnum cur" aria-current="page">{{ n }}</span>
             {% else %}
-            <a class="pgnum" href="/?page={{ n }}">{{ n }}</a>
+            <a class="pgnum" href="/?page={{ n }}{{ '&who=' ~ history_who if history_who }}">{{ n }}</a>
             {% endif %}
           {% endfor %}
           {% if pager.pages not in pager.window %}
-          <span class="gap">…</span><a class="pgnum" href="/?page={{ pager.pages }}">{{ pager.pages }}</a>
+          <span class="gap">…</span><a class="pgnum" href="/?page={{ pager.pages }}{{ '&who=' ~ history_who if history_who }}">{{ pager.pages }}</a>
           {% endif %}
           {% if pager.has_next %}
-          <a class="pgbtn" href="/?page={{ pager.page + 1 }}" rel="next">›</a>
+          <a class="pgbtn" href="/?page={{ pager.page + 1 }}{{ '&who=' ~ history_who if history_who }}" rel="next">›</a>
           {% else %}<span class="pgbtn off">›</span>{% endif %}
         </div>
       </nav>

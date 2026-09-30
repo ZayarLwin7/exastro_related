@@ -10,13 +10,23 @@
 <style>
 
   *{box-sizing:border-box;margin:0;padding:0}
-  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  /* Wraps instead of breaking. A header that reflows is readable at any width;
+     one that overflows puts the sign-out button off the side of the screen,
+     which is the one control nobody can afford to lose. */
+  .appbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 14px;padding:18px 34px;border-bottom:1px solid var(--line)}
+  .bartitle{min-width:0;flex:1 1 200px}
+  .bartitle h1{overflow-wrap:anywhere}
+  /* Controls that must never be the thing that shrinks: a sign-out button
+     squeezed to an ellipsis is a sign-out button nobody can find. */
+  .appbar .themesw{flex:0 0 auto}
   .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
   .logo svg{width:22px;height:22px}
-  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
-  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em;margin:0}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500;overflow-wrap:anywhere}
   .appbar .spacer{flex:1}
-  .useraction{display:flex;align-items:center;gap:8px}
+  /* The identity group stays whole: splitting the name from the sign-out
+     button would be worse than moving both to a second line. */
+  .useraction{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .logoutbtn{padding:6px 11px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--txt);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
   .logoutbtn:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
   /* A pill like the user chip beside it, so it reads as something to press.
@@ -26,7 +36,10 @@
   .backlink:hover{border-color:rgba(var(--hi-rgb),.28);background:var(--panel-2)}
   .backlink svg{width:14px;height:14px}
   .userchip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:230px;padding:6px 12px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line);color:var(--txt);font-size:12px;font-weight:650;line-height:1.35;overflow:hidden;overflow-wrap:anywhere;/* Two lines then clip, never one line with an ellipsis: a name that renders as "juan..." is not a name anybody can act on. */}
-  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut)}
+  /* A workspace name can be long, and an environment pill that pushes the
+     theme switch off the edge is worse than one that names itself briefly. */
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut);max-width:min(38vw,320px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+  .pill .dot{flex:0 0 auto}
   .pill .dot{width:8px;height:8px;border-radius:50%}
   .pill.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.2)}
   .pill.mock .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(var(--warn-rgb),.2)}
@@ -109,7 +122,7 @@
   <div class="logo">
     <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
   </div>
-  <div>
+  <div class="bartitle">
     <h1>{{ t('settings_title') }}</h1>
     <div class="subtitle">{{ t('settings_lede') }}</div>
   </div>

@@ -10,7 +10,8 @@
 <style>
 
   *{box-sizing:border-box;margin:0;padding:0}
-  .appbar{display:flex;align-items:center;gap:14px;padding:22px 34px;border-bottom:1px solid var(--line)}
+  .appbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 14px;padding:18px 34px;border-bottom:1px solid var(--line)}
+  .bartitle{min-width:0;flex:1 1 200px}
   .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(var(--acc-rgb),.45);flex:0 0 auto}
   .logo svg{width:22px;height:22px}
   .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -107,7 +108,7 @@
 <body>
 <header class="appbar">
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
-  <div>
+  <div class="bartitle">
     <h1>{{ t('result_title') }}</h1>
     <div class="subtitle">Ansible-LegacyRole · {{ movement_name }}</div>
   </div>
