@@ -67,7 +67,7 @@
   .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);
     box-shadow:0 4px 14px rgba(var(--acc-rgb),.35)}
   .hintline{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.5}
-  .check{display:flex;gap:4px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
+  .check{display:flex;gap:6px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
   .check input{margin-top:2px;accent-color:var(--acc);width:15px;height:15px;flex:0 0 auto}
   .check .hint{display:block;color:var(--dim);font-size:11px;line-height:1.4;
                margin-top:2px}
@@ -76,8 +76,10 @@
      grid above it and its label carries full contrast, rather than sitting in
      the muted grey of an ordinary option where it can be ticked by reflex. */
   .check.recreate{margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--line);
-                  color:var(--txt)}
-  .check.recreate .hint{color:var(--mut);max-width:62ch}
+                  color:var(--txt);font-weight:700}
+  /* The caption is a caption, not a second heading: it takes its colour back
+     to normal weight so the label above it is the thing that reads as bold. */
+  .check.recreate .hint{color:var(--mut);max-width:62ch;font-weight:400}
   .jsonbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
   .minibtn{background:var(--panel-2);border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;transition:color .15s,border-color .15s}
   .minibtn:hover{color:var(--txt);border-color:var(--acc)}

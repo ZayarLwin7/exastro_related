@@ -6082,11 +6082,17 @@ def test_a_checkbox_sits_close_enough_to_look_like_its_label(store):
     body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
     gap = re.search(r"\.check\{[^}]*gap:(\d+)px", body)
     assert gap, "no gap on .check"
-    assert int(gap.group(1)) <= 4, f"gap is {gap.group(1)}px, still too far"
     box = re.search(r"\.check input\{[^}]*width:(\d+)px", body)
     assert box
     assert int(gap.group(1)) < int(box.group(1)), (
-        "the gap should be narrower than the box it sits beside")
+        f"gap {gap.group(1)}px is not narrower than the {box.group(1)}px box "
+        "beside it, so the text reads as a separate line rather than a label")
+    # and no ancestor rule may claim the row and space the two apart -- that is
+    # what turned "a few pixels" into 285px, and no amount of tuning this number
+    # would have shown it
+    assert re.search(r"\.field label:not\(\.check\)", body) or \
+        re.search(r"\.field\s*>\s*label", body), \
+        "a rule can claim the checkbox row again"
 
 
 def test_the_destructive_option_is_set_apart_from_the_ordinary_ones(store):
@@ -6102,6 +6108,12 @@ def test_the_destructive_option_is_set_apart_from_the_ordinary_ones(store):
     assert "border-top" in rule.group(1), "it should be separated from the grid"
     assert "var(--txt)" in rule.group(1), (
         "and its label should carry full contrast, not the muted grey")
+    assert "font-weight:700" in rule.group(1), "the label should read as bold"
+    # but the caption underneath is a caption, not a second heading
+    cap = re.search(r"\.check\.recreate \.hint\{([^}]*)\}", body)
+    assert cap, "the caption has no rule of its own"
+    assert "font-weight:400" in cap.group(1), (
+        "the caption must take its weight back, or the label stops standing out")
 
 
 def test_a_checkbox_row_is_not_claimed_by_the_field_label_rule(store):
