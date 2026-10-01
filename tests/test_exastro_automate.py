@@ -5565,9 +5565,20 @@ def test_no_client_call_reads_a_config_field_from_the_module():
     src = (ROOT / "exastro_client.py").read_text(encoding="utf-8")
     real = src[:src.index("class MockExastroClient")]
     field_keys = {f["key"] for f in settings.FIELDS}
-    bad = sorted({m for m in re.findall(r"\bcfg\.([A-Z_][A-Z0-9_]*)", real)
-                  if m in field_keys})
-    assert not bad, f"read from the module instead of the instance: {bad}"
+    # A module-level constant captured once at import is a different thing from
+    # a per-request read, and is allowed -- but only the one, and only when it
+    # is a capture rather than a lookup.
+    CAPTURED_DEFAULTS = {"HEADER_SECTION"}
+    bad = set()
+    for line in real.splitlines():
+        for name in re.findall(r"\bcfg\.([A-Z_][A-Z0-9_]*)", line):
+            if name not in field_keys:
+                continue
+            capture = re.match(r"^_?[A-Z_][A-Z0-9_]* = cfg\.", line)
+            if capture and name in CAPTURED_DEFAULTS:
+                continue
+            bad.add(name)
+    assert not bad, f"read from the module instead of the instance: {sorted(bad)}"
 
 
 # ---------------------------------------------------------------------------
@@ -5906,3 +5917,142 @@ def test_a_host_group_from_another_workspace_is_refused(store, monkeypatch):
                                 "host_group": "some-other-ws-group"})
     assert "not a host group" in r.get_data(as_text=True)
     assert not called
+
+
+# ---------------------------------------------------------------------------
+# the header section is YAML, and a single-line input destroys it
+# ---------------------------------------------------------------------------
+
+GOOD_HEADER = ('- hosts: localhost\n'
+               '  remote_user: "{{ __loginuser__ }}"\n'
+               '  gather_facts: no')
+FLAT_HEADER = ('- hosts: localhost  remote_user: "{{ __loginuser__ }}"'
+               '  gather_facts: no')
+
+
+def test_a_single_line_input_cannot_hold_the_header_section(store):
+    """The root cause, asserted about the template rather than described.
+
+    An <input type="text"> cannot carry a newline: the HTML parser strips them
+    from the value. So rendering this YAML in one flattened it on every save,
+    and the only symptom was ITA refusing the movement with a line number
+    pointing into text the operator never typed.
+    """
+    body = (ROOT / "templates" / "settings.html").read_text(encoding="utf-8")
+    assert "{% elif f.multiline %}" in body, "no textarea branch for YAML fields"
+    i = body.index("<textarea", body.index("{% elif f.multiline %}"))
+    branch = body[i:body.index("</textarea>", i) + len("</textarea>")]
+    assert "<textarea" in branch, "the multiline branch must be a textarea"
+    assert 'type="text"' not in branch, \
+        "a text input strips the newlines that are the value"
+    # and the value goes in as element content, where newlines survive
+    assert ">{{ f.value }}</textarea>" in branch
+
+    field = [f for f in settings.FIELDS if f["key"] == "HEADER_SECTION"][0]
+    assert field.get("multiline"), "HEADER_SECTION is not marked multiline"
+
+
+def test_a_flattened_header_section_is_refused_before_it_is_saved(store):
+    """Checked at save, not at run time: flattened YAML is valid input to a
+    form and the only other report was ITA's, which names nothing the operator
+    can act on."""
+    assert not settings.header_section_is_block_list(FLAT_HEADER)
+    for good in (GOOD_HEADER, "", "   ", "- hosts: localhost",
+                 "- hosts: localhost\n  vars:\n    a: 1",
+                 "- {hosts: localhost, gather_facts: no}"):
+        assert settings.header_section_is_block_list(good), f"rejected: {good!r}"
+
+
+def test_the_two_copies_of_the_yaml_check_agree(store):
+    """The client carries its own copy so it need not import a UI module, and
+    a guard that quietly disagreed with the one that ran at save time would
+    reopen the whole class of bug."""
+    from exastro_client import _is_yaml_block_sequence
+    for value in (GOOD_HEADER, FLAT_HEADER, "", "- hosts: localhost",
+                  "- hosts: localhost  gather_facts: no",
+                  "- hosts: \"a: b\"\n  gather_facts: no",
+                  '- hosts: "a: b"  gather_facts: no'):
+        assert _is_yaml_block_sequence(value) == \
+            settings.header_section_is_block_list(value), f"disagree on {value!r}"
+
+
+def test_a_broken_header_section_falls_back_and_says_so(store, monkeypatch):
+    """A flattened value is broken input, not a preference. The run proceeds on
+    the shipped default -- but says it did, because the profile still needs
+    fixing and silence would be the one option that leaves it broken."""
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(appmod, "client", appmod.ExastroClient())
+    cl = appmod.client_for("testuser")
+    cl._v = lambda name, **kw: FLAT_HEADER if name == "HEADER_SECTION" else ""
+    cl.orchestrator_label = lambda: "Ansible Legacy Role"
+    cl.host_format_label = lambda: "IP"
+    cl._find_movement = lambda name: None
+    sent = {}
+    cl._upsert = lambda menu, params, match: sent.update(params) or "created"
+    result = cl.create_movement("m1")
+    assert sent["header_section"] == GOOD_HEADER, "should send valid YAML"
+    assert "NOTE" in result and "line breaks" in result, (
+        f"the substitution must be visible in the report, got: {result!r}")
+
+
+def test_a_good_header_section_is_never_substituted(store, monkeypatch):
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(appmod, "client", appmod.ExastroClient())
+    cl = appmod.client_for("testuser")
+    cl._v = lambda name, **kw: GOOD_HEADER if name == "HEADER_SECTION" else ""
+    cl.orchestrator_label = lambda: "Ansible Legacy Role"
+    cl.host_format_label = lambda: "IP"
+    cl._find_movement = lambda name: None
+    sent = {}
+    cl._upsert = lambda menu, params, match: sent.update(params) or "created"
+    result = cl.create_movement("m1")
+    assert sent["header_section"] == GOOD_HEADER
+    assert "NOTE" not in result, "a valid header must pass through untouched"
+
+
+def test_a_step_whose_prerequisite_failed_is_skipped_not_failed(store, monkeypatch):
+    """Two failures, one cause.
+
+    The link cannot succeed without the movement, and ITA's answer when it
+    cannot is "The input value is an invalid value.(input value:<name>)" -- a
+    second error that says nothing new and buries the first. The operator has
+    to work out that both came from one thing, which is exactly the work the
+    report should have done.
+    """
+    monkeypatch.setattr(cfg, "MOCK", True)
+    from exastro_client import MockExastroClient
+    fake = MockExastroClient()
+    monkeypatch.setattr(appmod, "client", fake)
+    settings.create_user("tester", "test-password")
+    settings.adopt_orphans("tester")
+    c = _login(appmod.app.test_client(), "tester")
+
+    def explode(name, *a, **k):
+        raise ExastroError("An unexpected error occurred in YAML parsing of "
+                          "header section. (mapping values are not allowed here)")
+    fake.create_movement = explode
+    linked = []
+    fake.link_movement_role = lambda *a, **k: linked.append(a) or "OK: linked"
+
+    c.post("/create", data={"movement_name": "m1", "role_package": "demo_pkg",
+                            "role_select": "DEMO_HOST_JOB",
+                            "exec_env": "DEMO_EXEC_ENV",
+                            "parameters": '{"a": "1"}'})
+    assert not linked, "the link must not be attempted without a movement"
+
+    body = c.get("/").get_data(as_text=True)
+    assert "invalid value" not in body, \
+        "the follow-on refusal should not appear when there is one real cause"
+
+
+def test_the_skipped_step_renders_as_neutral_not_as_a_failure(store):
+    """A red cross for a step that was never attempted invents a second
+    problem for the operator to go looking for."""
+    body = (ROOT / "templates" / "result.html").read_text(encoding="utf-8")
+    assert "{% if s.skipped %}" in body
+    assert "'skip' if s.skipped else 'fail'" in body
+    assert ".stepicon.skip{" in body
+    # and the token it paints with has to exist
+    theme = (ROOT / "static" / "theme.css").read_text(encoding="utf-8")
+    token = re.search(r"\.stepicon\.skip\{[^}]*var\((--[a-z0-9-]+)\)", body).group(1)
+    assert f"{token}:" in theme, f"{token} is not defined in the theme"

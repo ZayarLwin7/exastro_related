@@ -75,6 +75,7 @@
   .stepicon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:1px}
   .stepicon.ok{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
   .stepicon.fail{background:rgba(var(--err-rgb),.14);color:var(--err)}
+  .stepicon.skip{background:rgba(var(--hi-rgb),.14);color:var(--mut)}
   .stepicon svg{width:14px;height:14px}
   .steps .sl{font-weight:600;font-size:13.5px}
   .steps .sd{margin-top:5px;font-size:12.5px;line-height:1.5;font-family:var(--mono);color:var(--mut);word-break:break-word}
@@ -188,8 +189,10 @@
             <tr>
               <td style="border-bottom:none">
                 <div class="steprow">
-                  <div class="stepicon {{ 'ok' if s.ok else 'fail' }}">
-                    {% if s.ok %}
+                  <div class="stepicon {{ 'ok' if s.ok else ('skip' if s.skipped else 'fail') }}">
+                    {% if s.skipped %}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                    {% elif s.ok %}
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                     {% else %}
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>

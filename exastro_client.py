@@ -775,6 +775,21 @@ class ExastroClient:
 
     # ---------------- creation operations ----------------
 
+    def header_section(self) -> tuple[str, bool]:
+        """The header section to send, and whether the default was substituted.
+
+        A header section that has lost its line breaks is not a preference, it
+        is broken input: ITA answers "mapping values are not allowed here" with
+        a line number pointing into text the operator never typed. Falling back
+        to the shipped default keeps the run working, and `substituted` says so
+        in the report rather than letting it pass as though nothing happened --
+        the profile still needs fixing, and this only stops it being silent.
+        """
+        value = self._v("HEADER_SECTION") or ""
+        if not value.strip() or _is_yaml_block_sequence(value):
+            return value, False
+        return _HEADER_SECTION_DEFAULT, True
+
     def _find_movement(self, movement_name: str) -> dict | None:
         """The live movement row with this name, if any.
 
@@ -799,23 +814,33 @@ class ExastroClient:
         than duplicated (two movements sharing a name make every later pulldown
         lookup ambiguous — ITA then renders 'Failed to exchange ID.').
         """
+        header, substituted = self.header_section()
         params = {
             "movement_name": movement_name,
             "orchestrator": self.orchestrator_label(),
-            "header_section": self._v("HEADER_SECTION"),
+            "header_section": header,
             "host_specific_format": self.host_format_label(),
             "ansible_agent_execution_environment": execution_env,
             "remarks": "Created by Exastro_Automate",
         }
+        def _note(result: str) -> str:
+            if not substituted:
+                return result
+            return (result + " -- NOTE: the stored Header Section had lost its "
+                    "line breaks and is not valid YAML, so the built-in default "
+                    "was sent instead. Re-save that profile's Header Section, one "
+                    "setting per line.")
+
         existing = self._find_movement(movement_name)
         if existing is None:
-            return self._upsert(self._v("MOVEMENT_MENU"), params, {"movement_name": movement_name})
+            return _note(self._upsert(self._v("MOVEMENT_MENU"), params,
+                                      {"movement_name": movement_name}))
 
         current = str(existing.get("ansible_agent_execution_environment") or "")
         if execution_env and current == execution_env:
-            return f"exists: movement '{movement_name}' (env {execution_env})"
+            return _note(f"exists: movement '{movement_name}' (env {execution_env})")
         if not execution_env:
-            return f"exists: movement '{movement_name}'"
+            return _note(f"exists: movement '{movement_name}'")
 
         pk = existing.get("movement_id") or self._pk(existing, self._v("MOVEMENT_MENU"))
         merged = {k: v for k, v in existing.items()
@@ -830,7 +855,8 @@ class ExastroClient:
             body = self._request("PATCH", url, json={"parameter": merged, "file": {}})
             return (f"updated: movement '{movement_name}' -> env {execution_env}"
                     f" ({self._result(body)})")
-        return f"exists: movement '{movement_name}' (env NOT set — variables unavailable)"
+        return _note(f"exists: movement '{movement_name}' "
+                     "(env NOT set — variables unavailable)")
 
 
     def link_movement_role(self, movement_name: str, role_name: str,
@@ -2005,6 +2031,51 @@ class ExastroClient:
                     operation["select"] = found
                     return found
         return None
+
+
+# The shipped default, captured before any profile is applied. Reading it
+# live would return whatever was applied last, which is often the broken
+# value this exists to replace.
+_HEADER_SECTION_DEFAULT = cfg.HEADER_SECTION
+
+
+def _is_yaml_block_sequence(value: str) -> bool:
+    """True when the value is a YAML block sequence rather than one long line.
+
+    Duplicated from `settings.header_section_is_block_list` rather than
+    imported: settings.py is a UI-side module and the client should keep
+    working without it. The two are kept in step by a test.
+    """
+    for raw in (value or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            line = line[2:].strip()
+        elif line == "-":
+            continue
+        keys, depth, quote, starts, i = 0, 0, None, True, 0
+        while i < len(line):
+            ch = line[i]
+            if quote:
+                if ch == quote and line[i - 1: i] != "\\":
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "[{":
+                depth += 1
+            elif ch in "]}":
+                depth -= 1
+            elif ch == ":" and depth == 0 and (i + 1 == len(line) or line[i + 1] in " \t"):
+                if starts:
+                    keys += 1
+                starts = False
+            elif ch in " \t":
+                starts = True
+            i += 1
+        if keys > 1:
+            return False
+    return True
 
 
 _DISCARDED_TRUE = {"1", "true", "yes"}

@@ -943,6 +943,57 @@ a long workspace name, and the identity group and theme switch are pinned so
 they are never the thing that shrinks — a sign-out button squeezed to an
 ellipsis is a sign-out button nobody can find.
 
+### The Header Section is YAML
+
+`HEADER_SECTION` is the one configurable field whose value is a **YAML
+document**, not a single value:
+
+```yaml
+- hosts: localhost
+  remote_user: "{{ __loginuser__ }}"
+  gather_facts: no
+```
+
+It is edited in a **`<textarea>`**, and that is not a styling preference. An
+`<input type="text">` cannot hold a newline — the HTML parser strips them from
+the value — so this field was flattened onto one line by *every save*, silently.
+Nothing said so until ITA refused the movement:
+
+```
+An unexpected error occurred in YAML parsing of header section.
+(mapping values are not allowed here, line 1, column 32:
+ - hosts: localhost remote_user: "{{ __loginuser__ }}" gather_ ... ^)
+```
+
+A line number pointing into text the operator never typed. Three things now
+stop it:
+
+1. the field is a textarea, and full width
+2. **a save is refused** if any line carries more than one `key:` — flattened
+   YAML is valid input to a form, so this is checked at the point of entry
+3. the client **falls back to the shipped default** and says so in the run
+   report, rather than failing the run or silently using a value the operator
+   did not choose
+
+The fallback's default is captured at import, not read from `config` live —
+`settings.apply()` writes into that module, so a live read returns whatever was
+applied last, which is often the broken value being corrected.
+
+No YAML library is a dependency; the structural check counts top-level keys per
+line and respects quoting and nesting.
+
+### A failed step takes its dependents with it
+
+`Create Movement` failing used to be followed by
+`Link Movement <-> Role` failing too, with ITA's
+*"The input value is an invalid value.(input value:&lt;name&gt;)"*. Two failures,
+one cause — and the second says nothing new, so the operator has to work out
+which one to act on.
+
+The link is now **skipped**, with its own neutral dash rather than a red cross:
+a step that was never attempted is not a failed step, and a red cross invents a
+second problem to go looking for.
+
 ### A discarded row is a deleted row
 
 Exastro's delete is a **soft delete** — the row stays in the menu with
@@ -1218,7 +1269,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-343 tests run against a fake that reproduces ITA's real response envelopes,
+350 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no

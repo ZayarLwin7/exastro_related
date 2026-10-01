@@ -561,6 +561,9 @@ TEXT: dict[str, dict[str, str]] = {
     "adv_hostgroup_menu": {"en": "Host group menu", "ja": "ホストグループ管理メニュー名"},
     "adv_host_link_menu": {"en": "Host link menu", "ja": "ホストリンクメニュー名"},
     "adv_header_section": {"en": "Header section", "ja": "ヘッダー項目"},
+    "adv_header_section_hint": {
+        "en": "YAML. Keep one setting per line -- line breaks are part of the value.",
+        "ja": "YAML形式です。1行に1つの設定を記述してください（改行は値の一部です）。"},
     # --- Advanced: ids, shown as dropdowns read from the environment ---------
     "adv_orchestrator_id": {"en": "Driver orchestrator", "ja": "オーケストレーター"},
     "adv_host_format_id": {"en": "Host specific format", "ja": "ホスト指定形式"},
@@ -616,6 +619,16 @@ TEXT: dict[str, dict[str, str]] = {
                        "ja": "'{name}' に切り替えました。"},
     "set_deleted": {"en": "Profile deleted.", "ja": "プロファイルを削除しました。"},
     "set_no_profile": {"en": "No such profile.", "ja": "プロファイルが見つかりません。"},
+    "step_skipped_no_movement": {
+        "en": "Skipped: movement “@@” was not created, so there is nothing to "
+              "link the role to. See the step above.",
+        "ja": "スキップしました：movement「@@」が作成されていないため、"
+              "リンク先が存在しません（上のステップを確認してください）。"},
+    "err_header_flattened": {
+        "en": "Header Section is YAML and must keep its line breaks -- "
+              "it looks like several settings were joined onto one line.",
+        "ja": "ヘッダセクションはYAMLです。改行を保持してください"
+              "（複数の設定が1行に連結されているようです）。"},
     "set_name_required": {"en": "Give the profile a name.",
                           "ja": "プロファイル名を入力してください。"},
     "set_required": {"en": "{field} is required.", "ja": "{field} は必須です。"},

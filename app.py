@@ -786,12 +786,24 @@ def create_everything(movement_name: str, role_name: str, sheet_name: str,
                           "detail": str(exc)})
             return None
 
-    step("movement", f"Create Movement '{movement_name}'",
-         lambda: cl.create_movement(movement_name, execution_env),
-         {"name": movement_name})
-    step("role_link", f"Link Movement <-> Role '{role_name}'",
-         lambda: cl.link_movement_role(movement_name, role_name),
-         {"name": role_name})
+    movement_result = step("movement", f"Create Movement '{movement_name}'",
+                           lambda: cl.create_movement(movement_name, execution_env),
+                           {"name": movement_name})
+    # The link cannot succeed without the movement, and ITA's answer when it
+    # cannot is "The input value is an invalid value.(input value:<name>)" --
+    # a second failure that says nothing new and buries the first. Say the
+    # step was skipped instead, so the report has one cause in it.
+    if movement_result is not None and _looks_bad(movement_result):
+        steps.append({"key": "role_link",
+                      "label": f"Link Movement <-> Role '{role_name}'",
+                      "i18n": "step_role_link", "args": {"name": role_name},
+                      "ok": False, "skipped": True,
+                      "detail": i18n.t("step_skipped_no_movement", lang,
+                                       name=movement_name)})
+    else:
+        step("role_link", f"Link Movement <-> Role '{role_name}'",
+             lambda: cl.link_movement_role(movement_name, role_name),
+             {"name": role_name})
     step("param_sheet", f"Create Parameter Sheet '{sheet_name}'",
          lambda: cl.create_parameter_sheet(sheet_name, params, column_meta,
                                            replace_flags=replace_flags),
@@ -1569,6 +1581,12 @@ def settings_save():
     errors = _validate(values)
     if not name:
         errors.append(i18n.t("set_name_required", lang))
+    # Checked here rather than at run time. A flattened header section is valid
+    # input to a form and invalid YAML, and the only place it surfaced was ITA
+    # refusing the movement with a line number pointing into text the operator
+    # never typed.
+    if not settings.header_section_is_block_list(values.get("HEADER_SECTION", "")):
+        errors.append(i18n.t("err_header_flattened", lang))
     if errors:
         for message in errors:
             flash(message, "error")

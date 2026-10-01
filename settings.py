@@ -126,8 +126,14 @@ FIELDS: list[dict] = [
      "label": "adv_hostgroup_menu"},
     {"key": "HOST_LINK_MENU", "kind": "text", "group": "advanced",
      "label": "adv_host_link_menu"},
+    # The one field whose value is a YAML document rather than a single value.
+    # It needs a <textarea>: an <input type="text"> cannot hold a newline --
+    # the HTML parser strips them from the value -- so rendering it in one
+    # flattened the header section on every save, and ITA then refused the
+    # movement with "mapping values are not allowed here".
     {"key": "HEADER_SECTION", "kind": "text", "group": "advanced",
-     "label": "adv_header_section"},
+     "label": "adv_header_section", "multiline": True,
+     "hint": "adv_header_section_hint"},
     {"key": "ORCHESTRATOR_ID", "kind": "text", "group": "advanced",
      "label": "adv_orchestrator_id", "hint": "id_wins_hint", "options_from": "orchestrator", "pair": "ORCHESTRATOR"},
     {"key": "HOST_SPECIFIC_FORMAT_ID", "kind": "text", "group": "advanced",
@@ -173,6 +179,57 @@ def env_defaults() -> dict:
     # changing it. Blank means "derive it".
     out["CLIENT_ID"] = ""
     return out
+
+
+def header_section_is_block_list(value: str) -> bool:
+    """True when the header section is a YAML block sequence ITA will accept.
+
+    YAML wants one `key: value` per line. This field used to be edited in a
+    single-line <input>, and the HTML parser strips newlines from an input's
+    value -- so every save quietly produced one long line, and nothing said so
+    until ITA refused the movement with "mapping values are not allowed here"
+    and a line number pointing into the middle of the flattened text.
+
+    So: any non-blank line carrying more than one top-level key is a value that
+    has been through a single-line field. Blank is fine -- an empty header
+    section falls back to the default.
+    """
+    for raw in (value or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            line = line[2:].strip()
+        elif line == "-":
+            continue
+        if len(_top_level_keys(line)) > 1:
+            return False
+    return True
+
+
+def _top_level_keys(line: str) -> list[str]:
+    """`key:` starts on one line of a block mapping, not several."""
+    keys, depth, quote, i = [], 0, None, 0
+    starts = True
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == quote and line[i - 1: i] != "\\":
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+        elif ch == ":" and depth == 0 and (i + 1 == len(line) or line[i + 1] in " \t"):
+            if starts:
+                keys.append(line[:i])
+            starts = False
+        elif ch in " \t" and not quote:
+            starts = True
+        i += 1
+    return keys
 
 
 def derived(values: dict) -> dict:

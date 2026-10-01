@@ -112,6 +112,10 @@
   details.adv .body{padding:0 18px 18px}
   .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
   .actions .spacer{flex:1}
+  textarea.yaml{padding:10px 12px;border-radius:10px;background:rgba(var(--field-rgb),.28);border:1px solid var(--line);
+    color:var(--txt);font:inherit;font-size:13.5px;width:100%;
+    min-height:96px;resize:vertical;line-height:1.55;
+    white-space:pre;overflow-x:auto}
   .target{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.7;word-break:break-all;background:rgba(var(--field-rgb),.22);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
   .target b{color:var(--mut);font-weight:600}
 
@@ -272,7 +276,7 @@
         <h3>{{ GROUP_LABEL[gname] }}</h3>
         <div class="fields">
           {% for f in fields[gname] %}
-          <div class="fld {% if f.kind in ['secret'] or f.key in ['GATEWAY_URL','EXEC_ENV'] %}wide{% endif %}">
+          <div class="fld {% if f.kind in ['secret'] or f.multiline or f.key in ['GATEWAY_URL','EXEC_ENV'] %}wide{% endif %}">
             <label for="{{ f.name }}">{{ t(f.label) }}{% if f.required %} *{% endif %}</label>
             {% if f.kind == 'secret' %}
             <input type="password" id="{{ f.name }}" name="{{ f.name }}" class="mono"
@@ -294,6 +298,15 @@
             </div>
             {% elif f.kind == 'int' %}
             <input type="number" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}" min="0">
+            {% elif f.multiline %}
+            {# A newline cannot survive an <input type="text">: the HTML parser
+               strips it from the value, so this field flattened itself on every
+               save and ITA then refused the movement with "mapping values are
+               not allowed here". A textarea is the only thing that holds YAML. #}
+            <textarea id="{{ f.name }}" name="{{ f.name }}" class="mono yaml"
+                      rows="4" spellcheck="false"
+                      placeholder="{{ f.placeholder }}"
+                      {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
             {% else %}
             <input type="text" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}"
                    class="mono" placeholder="{{ f.placeholder }}"
