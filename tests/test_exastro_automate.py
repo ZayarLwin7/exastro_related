@@ -6056,3 +6056,18 @@ def test_the_skipped_step_renders_as_neutral_not_as_a_failure(store):
     theme = (ROOT / "static" / "theme.css").read_text(encoding="utf-8")
     token = re.search(r"\.stepicon\.skip\{[^}]*var\((--[a-z0-9-]+)\)", body).group(1)
     assert f"{token}:" in theme, f"{token} is not defined in the theme"
+
+
+def test_the_logical_name_is_stepped_in_from_the_other_values(store):
+    """It is the one cell you scan down to find "which row is this", so it
+    should not read as one of five equal-weight fields. The cell is built by
+    the page's own JS, so this asserts on the class as well as the rule -- a
+    rule with nothing carrying it indents nothing."""
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    rule = re.search(r"\.cgrid td\.ln\{([^}]*)\}", body)
+    assert rule, "the logical-name cell has no indent rule"
+    px = re.search(r"padding-left:(\d+)px", rule.group(1))
+    assert px and 2 <= int(px.group(1)) <= 16, \
+        "a few pixels, not a column"
+    assert "'<td class=\"ln\"><code>'" in body, \
+        "the row builder is not marking the cell, so the rule does nothing"

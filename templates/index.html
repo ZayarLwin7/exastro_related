@@ -67,7 +67,7 @@
   .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);
     box-shadow:0 4px 14px rgba(var(--acc-rgb),.35)}
   .hintline{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.5}
-  .check{display:flex;gap:10px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
+  .check{display:flex;gap:7px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
   .check input{margin-top:2px;accent-color:var(--acc);width:15px;height:15px;flex:0 0 auto}
   .check .hint{display:block;color:var(--dim);font-size:11px}
   .jsonbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
@@ -95,6 +95,11 @@
   .cgrid th.ty{width:78px}
   .cgrid th.ck,.cgrid td.ck{width:52px;text-align:center;padding:0 0 6px}
   .cgrid td{padding:5px 8px 5px 0;border-top:1px solid var(--line);vertical-align:middle}
+  /* The logical name is the row's identity, so it is stepped in from the other
+     values rather than sitting flush with them. It is the one cell you scan
+     down to find "which row is this", and it should not read as one of five
+     equal-weight fields. */
+  .cgrid td.ln{padding-left:9px}
   .cgrid td code{font-family:var(--mono);font-size:11.5px;color:var(--txt);
                  word-break:break-all}
   .cgrid tr.set td{background:rgba(var(--acc-rgb),.07)}
@@ -792,7 +797,7 @@ const T = {{ {
     rows.innerHTML=keys.map(k=>{
       const [label,cls]=typeOf(obj[k]);
       return '<tr'+(touched(k)?' class="set"':'')+'>'
-        +'<td><code>'+esc(k)+'</code></td>'
+        +'<td class="ln"><code>'+esc(k)+'</code></td>'
         +'<td><span class="t '+cls+'">'+label+'</span></td>'
         +'<td><input class="input dn" type="text" data-k="'+esc(k)+'" value="'
           +esc(shown(k))+'" placeholder="'+esc(k)+'" maxlength="128" autocomplete="off"></td>'
