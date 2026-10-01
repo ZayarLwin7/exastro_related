@@ -377,7 +377,8 @@ class ExastroClient:
         data = body.get("data", body) if isinstance(body, dict) else body
         return data if isinstance(data, dict) else {}
 
-    def filter_records(self, menu: str, params: dict | None = None) -> list[dict]:
+    def filter_records(self, menu: str, params: dict | None = None,
+                       include_discarded: bool = False) -> list[dict]:
         """Rows of a menu as flat dicts (empty search = no filtering).
 
         ITA answers `/filter/` with a list of *envelopes*
@@ -403,6 +404,16 @@ class ExastroClient:
                 out.append(row["parameter"])
             elif isinstance(row, dict):
                 out.append(row)
+        if not include_discarded:
+            # Exastro's delete is a soft delete: the row stays, with discard=1.
+            # /filter/ does not exclude them (passing the flag makes ITA 500),
+            # so they arrive here alongside live rows -- and a discarded row is
+            # a deleted one, so listing it is wrong for every caller of this
+            # function. Each is a menu read for a dropdown, an existence check
+            # or a role lookup, and a deleted record must answer to none of
+            # them. It also made a renamed-then-deleted link keep answering
+            # with the row it had before, error text and all.
+            out = [r for r in out if not _is_discarded(r)]
         return out
 
 
@@ -579,7 +590,13 @@ class ExastroClient:
             raise ExastroError(insert_error)
 
         candidates = []
-        for row in self.filter_records(menu):
+        # Discarded rows included on purpose. ITA enforces uniqueness on a row
+        # whether or not it is discarded, so a discarded twin is *precisely*
+        # the case where an insert is refused as a duplicate and the correct
+        # repair is to revive that row rather than fight the index. Filtering
+        # them out here turned a revivable duplicate into "ITA reports a
+        # duplicate but no matching row is readable".
+        for row in self.filter_records(menu, include_discarded=True):
             p = row.get("parameter", row) if isinstance(row.get("parameter"), dict) else row
             if not all(str(p.get(k)) == str(v) for k, v in match_keys.items()):
                 continue
@@ -759,10 +776,16 @@ class ExastroClient:
     # ---------------- creation operations ----------------
 
     def _find_movement(self, movement_name: str) -> dict | None:
-        """The live (non-discarded) movement row with this name, if any."""
+        """The live movement row with this name, if any.
+
+        A discarded twin is deliberately not a match here: this asks "is there
+        already a live movement of this name to reuse?", and reviving a
+        discarded one is `_upsert`'s job once ITA refuses the insert as a
+        duplicate. `filter_records` already hides discarded rows, so the check
+        this used to do here would never see one.
+        """
         for row in self.filter_records(self._v("MOVEMENT_MENU")):
-            if str(row.get("movement_name")) == movement_name \
-                    and str(row.get("discard")) != "1":
+            if str(row.get("movement_name")) == movement_name:
                 return row
         return None
 
@@ -1982,6 +2005,24 @@ class ExastroClient:
                     operation["select"] = found
                     return found
         return None
+
+
+_DISCARDED_TRUE = {"1", "true", "yes"}
+
+
+def _is_discarded(row: dict) -> bool:
+    """True when Exastro has soft-deleted this row.
+
+    The flag arrives as the string "0"/"1" from /filter/ and as a real bool
+    from some other endpoints, so both are accepted rather than assuming one
+    representation and silently keeping deleted rows.
+    """
+    v = row.get("discard")
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    return str(v).strip().lower() in _DISCARDED_TRUE
 
 
 class MockExastroClient(ExastroClient):

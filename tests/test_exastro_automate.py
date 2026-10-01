@@ -5753,3 +5753,89 @@ def test_the_filter_is_separated_from_the_table(store):
     decl = rule.group(1)
     assert re.search(r"margin:\s*0 0 [1-9]\d*px", decl), (
         "the filter needs its own space above the table")
+
+
+# ---------------------------------------------------------------------------
+# a discarded row is a deleted row
+# ---------------------------------------------------------------------------
+
+def _link(name, discard="0", state="Normal", path="repo:roles"):
+    return {"link_file_name": name, "discard": discard, "file_sync_state": state,
+            "file_path": path, "link_file_type": "Ansible-LegacyRole/Role package list"}
+
+
+def test_a_discarded_file_link_never_reaches_the_role_dropdown(store, monkeypatch):
+    """The reported one. Renaming a link and discarding the old rows left them
+    in the menu, and /filter/ hands them back -- so the dropdown offered a
+    package that had been deleted, carrying the row's own error text.
+
+    Stubbed at the HTTP layer, not at `filter_records`, so the real filtering
+    is what is under test: an earlier version of this stubbed the method it was
+    meant to prove, and passed for the wrong reason.
+    """
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(appmod, "client", appmod.ExastroClient())
+    cl = appmod.client_for("testuser")
+    cl._pulldown = lambda menu: {"link_file_type": {
+        "1": "Ansible-Legacy/Playbook files",
+        "3": "Ansible-LegacyRole/Role package list"}}
+    cl._request = lambda method, url, **kw: {"data": [{"parameter": r} for r in [
+        _link("test_project", discard="0"),
+        _link("test_project", discard="1",
+              state="Failed to exchange ID. ()",
+              path="Failed to exchange ID. (ea3420e5-d7aa-4222-8074-73c4d9dcd088)"),
+        _link("ai_test_project", discard="1",
+              state="Failed to exchange ID. ()",
+              path="Failed to exchange ID. (ea3420e5-d7aa-4222-8074-73c4d9dcd088)"),
+    ]]}
+    names = [r["package"] for r in cl.git_role_packages()]
+    assert names == ["test_project"], f"a deleted link was offered: {names}"
+
+
+def test_a_discarded_row_is_filtered_from_every_menu_read(store, monkeypatch):
+    """Not just file links. Exastro soft-deletes every menu the same way, and
+    each of these reads exists to answer a question about *current* state."""
+    monkeypatch.setattr(cfg, "MOCK", False)
+    from exastro_client import _is_discarded
+    for value, expect in [("0", False), ("1", True), (1, True), (0, False),
+                          (True, True), (False, False), (None, False),
+                          ("true", True), ("", False), (" 1 ", True)]:
+        assert _is_discarded({"discard": value}) is expect, \
+            f"discard={value!r} should be {expect}"
+
+
+def test_a_menu_read_can_still_be_asked_for_the_deleted_rows(store, monkeypatch):
+    """Opting in has to be possible; a row's own history is sometimes the
+    question, and silently losing it would be the other kind of wrong."""
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(appmod, "client", appmod.ExastroClient())
+    cl = appmod.client_for("testuser")
+    cl._request = lambda method, url, **kw: {"data": [
+        {"parameter": _link("live", discard="0")},
+        {"parameter": _link("gone", discard="1")},
+    ]}
+    assert [r["link_file_name"] for r in cl.filter_records("file_link")] == ["live"]
+    assert [r["link_file_name"]
+            for r in cl.filter_records("file_link", include_discarded=True)] == ["live", "gone"]
+
+
+def test_ita_rejects_a_server_side_discard_filter_so_we_filter_here(store, monkeypatch):
+    """Documented because it looks like an obvious thing to try: passing the
+    flag makes ITA 500, so the exclusion has to happen on our side."""
+    seen = {}
+
+    def spy(method, url, **kw):
+        seen["body"] = kw.get("json")
+        raise RuntimeError("HTTP 500: System Error")
+
+    monkeypatch.setattr(cfg, "MOCK", False)
+    monkeypatch.setattr(appmod, "client", appmod.ExastroClient())
+    cl = appmod.client_for("testuser")
+    cl._request = spy
+    try:
+        cl.filter_records("file_link", {"discard": "0"})
+    except Exception:
+        pass
+    assert seen.get("body") == {"discard": "0"}
+    # if ITA ever accepts it, the client-side filter becomes redundant
+    # but harmless -- and still needed for rows already in memory

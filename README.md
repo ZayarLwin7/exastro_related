@@ -943,6 +943,27 @@ a long workspace name, and the identity group and theme switch are pinned so
 they are never the thing that shrinks — a sign-out button squeezed to an
 ellipsis is a sign-out button nobody can find.
 
+### A discarded row is a deleted row
+
+Exastro's delete is a **soft delete** — the row stays in the menu with
+`discard=1` — and `/filter/` hands it back alongside the live ones. Passing
+`discard` to `/filter/` makes ITA answer **500**, so the exclusion happens on
+our side, in `filter_records`, where every menu read goes through it.
+
+That matters for more than file links. Renaming a link and discarding the old
+rows left the deleted ones in the menu, and they kept answering with their own
+stale `file_path` — the literal text `Failed to exchange ID. (<uuid>)`. The role
+package dropdown was offering a package that had been deleted, carrying the error
+from the row it used to be.
+
+**One deliberate exception.** `_upsert` reads with `include_discarded=True`.
+ITA enforces uniqueness on a row whether or not it is discarded, so a discarded
+twin is *precisely* the case where an insert is refused as a duplicate and the
+correct repair is to revive that row rather than fight the index. Hiding is for
+*offering*; revival is for *identity*, and filtering it out of the lookup turned
+a revivable duplicate into "ITA reports a duplicate but no matching row is
+readable".
+
 ### Run history
 
 Every run is recorded in `creations.db` with its **full report** — each step,
@@ -1178,7 +1199,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-337 tests run against a fake that reproduces ITA's real response envelopes,
+341 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no
