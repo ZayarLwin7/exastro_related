@@ -1583,7 +1583,7 @@ def test_no_japanese_leaks_into_english_across_all_pages(mock_client, tmpdb):
 
 
 # ---------------------------------------------------------------------------
-# Parameter Rest Name autofill, hint wording, history column display
+# Parameter Sheet Rest Name autofill, hint wording, history column display
 # ---------------------------------------------------------------------------
 
 def test_sheet_hint_uses_the_requested_wording():
@@ -5839,3 +5839,70 @@ def test_ita_rejects_a_server_side_discard_filter_so_we_filter_here(store, monke
     assert seen.get("body") == {"discard": "0"}
     # if ITA ever accepts it, the client-side filter becomes redundant
     # but harmless -- and still needed for rows already in memory
+
+
+def test_a_workspace_with_no_host_group_says_so_instead_of_failing(store,
+                                                                  monkeypatch):
+    """A brand-new workspace has no host group yet, which is the normal first
+    state of a workspace and not a misconfiguration.
+
+    Only the Operation needs one. Creating the movement, the role link and the
+    parameter sheet must all work, and the run must stop with a message that
+    says which field to fill in -- ITA's own answer to an unknown group name is
+    a bare "invalid value", which tells the operator nothing.
+    """
+    monkeypatch.setattr(cfg, "MOCK", True)
+    from exastro_client import MockExastroClient
+    fake = MockExastroClient()
+    monkeypatch.setattr(appmod, "client", fake)
+    settings.create_user("tester", "test-password")
+    settings.adopt_orphans("tester")
+    fake._HOSTS = {}          # a workspace where nothing has been registered yet
+    c = _login(appmod.app.test_client(), "tester")
+    assert not fake.host_groups(), "precondition: no host groups"
+
+    # the setup half works with no group in sight
+    r = c.post("/create", data={"movement_name": "m", "role_package": "demo_pkg",
+                                "role_select": "DEMO_HOST_JOB",
+                                "exec_env": "DEMO_EXEC_ENV", "parameters": '{"a": "1"}'})
+    assert r.status_code == 200, "the setup half must work with no host group"
+    assert "No host groups" not in r.get_data(as_text=True), \
+        "and it must not be blocked by the missing group"
+
+    # the run half stops and says why, without reaching ITA
+    called = []
+    fake.create_operation = lambda *a, **k: called.append(a) or {}
+    r = c.post("/create", data={"movement_name": "m", "role_package": "demo_pkg",
+                                "role_select": "DEMO_HOST_JOB",
+                                "exec_env": "DEMO_EXEC_ENV", "parameters": '{"a": "1"}',
+                                "create_op": "1", "host_group": ""})
+    banners = re.findall(r'<div class="banner err">(.*?)</div>',
+                         r.get_data(as_text=True), re.S)
+    said = " ".join(re.sub(r"<[^>]+>", "", b) for b in banners)
+    assert "Choose a host group" in said, (
+        f"an empty group should be refused as missing, not unrecognised; "
+        f"the page said: {said[:200]!r}")
+    assert not called, "nothing should have been created"
+
+
+def test_a_host_group_from_another_workspace_is_refused(store, monkeypatch):
+    """The name is checked against this workspace's own list before anything is
+    written, so a stale name carried over from another workspace cannot reach
+    ITA, which would answer with an error that names nothing useful."""
+    monkeypatch.setattr(cfg, "MOCK", True)
+    from exastro_client import MockExastroClient
+    fake = MockExastroClient()
+    monkeypatch.setattr(appmod, "client", fake)
+    settings.create_user("tester", "test-password")
+    settings.adopt_orphans("tester")
+    fake._HOSTS = {"real-group": ["h1"]}   # this workspace has exactly one
+    c = _login(appmod.app.test_client(), "tester")
+    called = []
+    fake.create_operation = lambda *a, **k: called.append(a) or {}
+    r = c.post("/create", data={"movement_name": "m", "role_package": "demo_pkg",
+                                "role_select": "DEMO_HOST_JOB",
+                                "exec_env": "DEMO_EXEC_ENV", "parameters": '{"a": "1"}',
+                                "create_op": "1",
+                                "host_group": "some-other-ws-group"})
+    assert "not a host group" in r.get_data(as_text=True)
+    assert not called

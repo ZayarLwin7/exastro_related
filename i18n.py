@@ -166,7 +166,8 @@ TEXT: dict[str, dict[str, str]] = {
                    "基本情報を入力するだけで、まとめて登録されます。"},
     "movement_name": {"en": "Movement Name", "ja": "作業実行名"},
     "movement_ph": {"en": "e.g. my-app-deploy", "ja": "例: my-app-deploy"},
-    "param_rest_name": {"en": "Parameter Rest Name", "ja": "パラメータシート英名"},
+    "param_rest_name": {"en": "Parameter Sheet Rest Name",
+                        "ja": "パラメータシート英名"},
     "sheet_hint": {"en": "If no value is filled in, the Movement Name will be "
                          "used as the Rest Parameter Sheet name by default.",
                   "ja": "値が入力されていない場合、既定で作業実行名が Rest "

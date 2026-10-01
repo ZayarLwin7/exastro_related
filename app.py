@@ -4,7 +4,7 @@ A single Flask page that builds a self-contained Ansible-LegacyRole Movement
 from four inputs:
 
      Movement Name
-     Parameter Rest Name      (blank -> the Movement Name is used)
+     Parameter Sheet Rest Name      (blank -> the Movement Name is used)
      Role Package + Role      (dependent dropdowns -> "Package:Role")
      Parameters (JSON)        keys become the parameter-sheet columns
 
@@ -1168,7 +1168,7 @@ def create():
     elif cfg.ROLE_PKG_SEP not in role_name:
         errors.append(i18n.t("err_role_format", lang, sep=cfg.ROLE_PKG_SEP,
                              got=role_name))
-    # A blank Parameter Rest Name is valid: it falls back to the movement name.
+    # A blank Parameter Sheet Rest Name is valid: it falls back to the movement name.
     if wait_vars and not execution_env:
         errors.append(i18n.t("err_exec_env_required", lang))
     try:

@@ -9,7 +9,7 @@ wrong), you provide four inputs on one page and it creates everything at once:
 
 ```
 Movement Name          zos_submit
-Parameter Rest Name    (blank)                 <- blank = same as Movement Name
+Parameter Sheet Rest Name (blank)                 <- blank = same as Movement Name
 Role Package           demo_pkg      <- dropdown from file_link
 Role                   DEMO_HOST_JOB     <- dropdown of that package's roles
 Parameters (JSON)      { "p_jobname": "JOB0000",
@@ -105,7 +105,7 @@ column type:
 ## The form
 
 * **Movement Name** — required.
-* **Parameter Rest Name** — auto-filled from the Movement Name, and stops
+* **Parameter Sheet Rest Name** — auto-filled from the Movement Name, and stops
   following the moment you type in it. Leaving it blank is still valid: the
   server falls back to the Movement Name regardless, so the default does not
   depend on JavaScript having run. It is a genuinely separate name, so one sheet
@@ -990,6 +990,25 @@ go and look up per row, because a row you cannot attribute is a row you cannot
 act on. They can open any run's Detail page, and the runs recorded before
 logins existed are labelled as predating them rather than shown as blank.
 
+### A workspace with no host group
+
+A brand-new workspace has no host group, and that is its normal first state
+rather than a misconfiguration. **Only the Operation needs one** — the movement,
+the role link and the parameter sheet are all created first, and all of them
+work with nothing registered.
+
+The run then stops before anything is written, and says which field to fill in:
+
+- in the browser, the dialog shows *"No host groups exist in this workspace."*
+  and refuses to submit
+- on the server, the name is checked against **this workspace's own list**, so a
+  group name carried over from a different workspace is refused as unrecognised
+  rather than sent to ITA
+
+That last check is why it is not enough to trust the dropdown. ITA's own answer
+to a name it does not have is a bare *"invalid value"*, which tells the operator
+nothing about what to fix.
+
 A **co-admin does not get this.** Supervising profiles is not supervising
 people; the line stays where the roles table puts it. And the filter cannot be
 used to widen anyone's view: for anybody who is not entitled to the whole list,
@@ -1199,7 +1218,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-341 tests run against a fake that reproduces ITA's real response envelopes,
+343 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no
