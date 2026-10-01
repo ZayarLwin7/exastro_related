@@ -38,3 +38,7 @@ _v*.db
 
 # the platform inventory, pasted in locally; never committed
 .scrub-denylist
+
+# Screenshots dropped in the repo root while reporting a layout problem
+*.PNG
+*.png

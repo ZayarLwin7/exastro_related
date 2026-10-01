@@ -943,6 +943,28 @@ a long workspace name, and the identity group and theme switch are pinned so
 they are never the thing that shrinks — a sign-out button squeezed to an
 ellipsis is a sign-out button nobody can find.
 
+### Specificity beats intent in the stylesheet
+
+`.field label` styles the field captions — a label with its text pushed to the
+opposite end, which is what a caption like *"Parameters"* with an action on the
+right needs. It also matched the **checkbox row** nested inside `.colpreview`,
+and at `(0,1,1)` it outranked `.check` at `(0,1,0)`.
+
+So the checkbox row inherited `justify-content: space-between`, which pushed
+its label text to the far end of the card — **285px**, measured from a
+screenshot — and every `gap` set on `.check` was overridden before it applied.
+Tightening that gap from 10px to 7px to 4px changed **nothing at all**, twice,
+and the honest read at the time was "the distance is the gap" when the distance
+was never the gap.
+
+The rule is now `.field label:not(.check)`: field captions, but not checkbox
+rows, which is what it always meant. A test re-derives the trap from the
+stylesheet so it cannot return silently.
+
+The general lesson, and the reason the test models specificity rather than
+asserting a number: **when a change to one rule has no effect, the value was
+never the thing being applied.**
+
 ### The Header Section is YAML
 
 `HEADER_SECTION` is the one configurable field whose value is a **YAML
@@ -1269,7 +1291,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-353 tests run against a fake that reproduces ITA's real response envelopes,
+354 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no

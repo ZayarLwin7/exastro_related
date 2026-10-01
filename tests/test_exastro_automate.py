@@ -6102,3 +6102,40 @@ def test_the_destructive_option_is_set_apart_from_the_ordinary_ones(store):
     assert "border-top" in rule.group(1), "it should be separated from the grid"
     assert "var(--txt)" in rule.group(1), (
         "and its label should carry full contrast, not the muted grey")
+
+
+def test_a_checkbox_row_is_not_claimed_by_the_field_label_rule(store):
+    """The gap bug, and it was a specificity trap rather than a wrong number.
+
+    `.field label` was written for the field captions and also matched the
+    checkbox row nested inside `.colpreview`. At (0,1,1) it beat `.check` at
+    (0,1,0), so `justify-content: space-between` pushed the label text to the
+    far end of the card -- 285px, measured from a screenshot -- and the `gap`
+    set on `.check` was overridden before it ever applied. Changing that gap
+    from 10px to 7px to 4px therefore changed nothing at all, twice.
+    """
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", body[body.index("<style>"):body.index("</style>")],
+                 flags=re.S)
+    claimants = []
+    for m in re.finditer(r"([^{}]+)\{([^}]*)\}", css):
+        for one in (" ".join(m.group(1).split())).split(","):
+            one = one.strip()
+            parts = one.split()
+            if not parts or not parts[-1].startswith("label"):
+                continue
+            # a rule that would match a <label> somewhere inside a .field
+            if any(p.lstrip(".").split(":")[0] == "field" for p in parts[:-1]):
+                direct = ">" in one
+                excludes = ".check" in one
+                claimants.append((one, direct, excludes,
+                                  " ".join(m.group(2).split())))
+    assert claimants, "no rule targets labels inside .field -- the guard has drifted"
+    for sel, direct, excludes, body in claimants:
+        assert direct or excludes, (
+            f"{sel!r} would claim a nested <label> again, including the "
+            "checkbox row, and outrank .check")
+        if not excludes:
+            assert "space-between" not in body, (
+                f"{sel!r} sets space-between and would push a checkbox label "
+                "away from its box")
