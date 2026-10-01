@@ -67,9 +67,17 @@
   .lbtn.cur{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);
     box-shadow:0 4px 14px rgba(var(--acc-rgb),.35)}
   .hintline{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.5}
-  .check{display:flex;gap:7px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
+  .check{display:flex;gap:4px;align-items:flex-start;margin:-2px 0 20px;font-size:12.5px;color:var(--mut);cursor:pointer;line-height:1.45}
   .check input{margin-top:2px;accent-color:var(--acc);width:15px;height:15px;flex:0 0 auto}
-  .check .hint{display:block;color:var(--dim);font-size:11px}
+  .check .hint{display:block;color:var(--dim);font-size:11px;line-height:1.4;
+               margin-top:2px}
+  /* This one is not like the other checkboxes. It deletes a column and adds it
+     back, and the values entered for it are lost -- so it is set apart from the
+     grid above it and its label carries full contrast, rather than sitting in
+     the muted grey of an ordinary option where it can be ticked by reflex. */
+  .check.recreate{margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--line);
+                  color:var(--txt)}
+  .check.recreate .hint{color:var(--mut);max-width:62ch}
   .jsonbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
   .minibtn{background:var(--panel-2);border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;transition:color .15s,border-color .15s}
   .minibtn:hover{color:var(--txt);border-color:var(--acc)}
@@ -99,7 +107,7 @@
      values rather than sitting flush with them. It is the one cell you scan
      down to find "which row is this", and it should not read as one of five
      equal-weight fields. */
-  .cgrid td.ln{padding-left:9px}
+  .cgrid td.ln{padding-left:2px}
   .cgrid td code{font-family:var(--mono);font-size:11.5px;color:var(--txt);
                  word-break:break-all}
   .cgrid tr.set td{background:rgba(var(--acc-rgb),.07)}
@@ -399,7 +407,7 @@
                on an existing column, and the only way to apply them is to delete
                the column and re-add it -- a new record, whose previously entered
                input values do not carry over. Off unless the operator asks. #}
-            <label class="check" style="margin:12px 0 0">
+            <label class="check recreate">
               <input type="checkbox" name="replace_flags" value="1"
                      {% if replace_flags %}checked{% endif %}>
               <span>{{ t('replace_flags_label') }}

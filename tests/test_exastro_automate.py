@@ -6067,7 +6067,38 @@ def test_the_logical_name_is_stepped_in_from_the_other_values(store):
     rule = re.search(r"\.cgrid td\.ln\{([^}]*)\}", body)
     assert rule, "the logical-name cell has no indent rule"
     px = re.search(r"padding-left:(\d+)px", rule.group(1))
-    assert px and 2 <= int(px.group(1)) <= 16, \
-        "a few pixels, not a column"
+    # Two pixels. Nine was a column of its own; this only has to separate the
+    # cell from the fields beside it.
+    assert px and int(px.group(1)) == 2, f"expected 2px, got {px and px.group(1)}"
     assert "'<td class=\"ln\"><code>'" in body, \
         "the row builder is not marking the cell, so the rule does nothing"
+
+
+def test_a_checkbox_sits_close_enough_to_look_like_its_label(store):
+    """10px, then 7px, were both reported as too far. Beside a 15px box the
+    text has to sit close enough to read as a label for it rather than as a
+    separate line of text -- the only distance between them is this gap, so
+    when it is wrong nothing else on the control is at fault."""
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    gap = re.search(r"\.check\{[^}]*gap:(\d+)px", body)
+    assert gap, "no gap on .check"
+    assert int(gap.group(1)) <= 4, f"gap is {gap.group(1)}px, still too far"
+    box = re.search(r"\.check input\{[^}]*width:(\d+)px", body)
+    assert box
+    assert int(gap.group(1)) < int(box.group(1)), (
+        "the gap should be narrower than the box it sits beside")
+
+
+def test_the_destructive_option_is_set_apart_from_the_ordinary_ones(store):
+    """Re-creating a column deletes it and adds it back, and the values entered
+    for it are lost. It should not sit in the muted grey of an ordinary
+    checkbox where it can be ticked by reflex."""
+    body = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    assert 'class="check recreate"' in body
+    assert 'style="margin:12px 0 0"' not in body, (
+        "the control still carries an inline style instead of a class")
+    rule = re.search(r"\.check\.recreate\{([^}]*)\}", body)
+    assert rule, "the control has no rule of its own"
+    assert "border-top" in rule.group(1), "it should be separated from the grid"
+    assert "var(--txt)" in rule.group(1), (
+        "and its label should carry full contrast, not the muted grey")
