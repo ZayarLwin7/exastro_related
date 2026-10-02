@@ -1750,9 +1750,22 @@ def test_binding_card_is_wide_enough_for_its_table(tpl, min_table):
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    """An isolated, empty settings store for one test."""
+    """An isolated, empty settings store for one test.
+
+    It also points the app's *history* database at a throwaway file. Taking
+    `store` but not `tmpdb` used to leave `appmod.DB_PATH` alone, so a test that
+    recorded a run -- directly, or by posting the real `/create` form -- wrote
+    it to the real `creations.db`. That is how 2,496 rows owned by `boss`,
+    `workmate` and `tester` ended up in a production database, and why the
+    admin's account filter offered those names instead of real accounts.
+
+    Two fixtures guarded two different databases and only one of them was
+    remembered. The safe default is the one that isolates both.
+    """
     path = tmp_path / "settings.db"
     monkeypatch.setattr(settings, "SETTINGS_DB", str(path))
+    monkeypatch.setattr(appmod, "DB_PATH", str(tmp_path / "hist.db"))
+    appmod.init_db()
     monkeypatch.delenv("EXA_SETTINGS_PIN", raising=False)
     settings.init_store()
     return path
@@ -5711,6 +5724,7 @@ def test_the_account_filter_offers_one_way_back_not_two(store):
     same thing is another thing to read, and the two can disagree."""
     settings.create_user("boss", "boss-password", role="admin")
     settings.adopt_orphans("boss")
+    appmod.save_creation("mine", "p:r", "s", "OK", owner="boss")
     c = _login(appmod.app.test_client(), "boss")
     body = c.get("/?who=boss").get_data(as_text=True)
     assert "All accounts" in body
@@ -6151,3 +6165,47 @@ def test_a_checkbox_row_is_not_claimed_by_the_field_label_rule(store):
             assert "space-between" not in body, (
                 f"{sel!r} sets space-between and would push a checkbox label "
                 "away from its box")
+
+
+# ---------------------------------------------------------------------------
+# tests must never write to the real databases
+# ---------------------------------------------------------------------------
+
+REAL_USERS = ("himeadmin", "hime-dev-user", "host_jidoukakiban-ws-user")
+
+
+def test_the_live_history_file_holds_no_test_accounts():
+    """The account filter offered `boss`, `workmate` and `tester` because their
+    runs were written to the real `creations.db`.
+
+    Read-only, and it never writes: a test that proved the leak by causing one
+    would be the leak. Skipped where there is no live file to check.
+    """
+    live = ROOT / "creations.db"
+    if not live.exists():
+        pytest.skip("no live creations.db in this checkout")
+    import sqlite3
+    conn = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+    try:
+        leaked = sorted(r[0] for r in conn.execute(
+            "SELECT DISTINCT owner FROM creations WHERE owner IS NOT NULL "
+            "AND owner NOT IN (?,?,?)", REAL_USERS))
+    finally:
+        conn.close()
+    assert not leaked, (
+        f"test accounts are in the live creations.db: {leaked}. A fixture is "
+        "not redirecting appmod.DB_PATH, so a test is writing to production.")
+
+
+def test_taking_the_store_fixture_redirects_the_history_file(store, tmp_path):
+    """`store` reads as "the data is sandboxed" and, for runs, it was not.
+
+    Two fixtures guarded two databases -- `tmpdb` redirected the history file,
+    `store` only the settings file -- and only one was remembered, so a test
+    that took `store` and recorded a run wrote it to production. Asserted
+    directly on where the path points, which is the thing that was wrong.
+    """
+    path = pathlib.Path(appmod.DB_PATH)
+    assert path != ROOT / "creations.db", "still pointing at the live file"
+    assert str(path).startswith(str(tmp_path)), (
+        f"expected a path under this test's tmp_path, got {path}")

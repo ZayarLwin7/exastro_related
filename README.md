@@ -943,6 +943,37 @@ a long workspace name, and the identity group and theme switch are pinned so
 they are never the thing that shrinks — a sign-out button squeezed to an
 ellipsis is a sign-out button nobody can find.
 
+### Tests must never write to the real databases
+
+The admin's account filter offered **`boss`, `workmate` and `tester`** next to
+the real accounts, because their runs were sitting in the live `creations.db` —
+2,496 test rows out of 2,573.
+
+The cause was two fixtures guarding two different databases, and only one of
+them being remembered:
+
+- `tmpdb` redirects `appmod.DB_PATH` — the **history** file
+- `store` redirected `settings.SETTINGS_DB` — the **settings** store, only
+
+A test that took `store` and recorded a run — directly, or by posting the real
+`/create` form — wrote to production. `store` reads as "the data is sandboxed",
+and for runs it was not.
+
+`store` now redirects both. Two tests guard it:
+
+- one asserts the path a `store`-taking test sees is under its own `tmp_path`
+- one opens the **live** file read-only and fails if any owner outside the real
+  accounts is in it
+
+The second is deliberately read-only. Its first draft proved the leak by
+writing a test-owned row and asserting the leak guard caught it — which is the
+leak, run on every suite execution. A test that demonstrates a leak must not
+cause one.
+
+One test was also passing *because* of the polluted data: it looked for a
+filter that only appeared because the real database held rows owned by the
+account it had invented. The leak was feeding back in as a green check.
+
 ### Specificity beats intent in the stylesheet
 
 `.field label` styles the field captions — a label with its text pushed to the
@@ -1291,7 +1322,7 @@ files in your backup set: `settings.db` holds every stored credential.
 cd Exastro_Automate && ../.venv/bin/python -m pytest tests -q
 ```
 
-354 tests run against a fake that reproduces ITA's real response envelopes,
+356 tests run against a fake that reproduces ITA's real response envelopes,
 unique-combination rejections, the substitution list rebuilding itself after a
 rename, and the format refusals on operation and input rows — so the update paths
 are exercised without touching a live workspace. They need no network and no

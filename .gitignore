@@ -42,3 +42,4 @@ _v*.db
 # Screenshots dropped in the repo root while reporting a layout problem
 *.PNG
 *.png
+creations.db.backup-*
