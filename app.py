@@ -1014,34 +1014,49 @@ def users_create():
     return redirect("/settings/users")
 
 
-@app.post("/settings/users/role")
-def users_role():
+@app.post("/settings/users/save")
+def users_save():
+    """One Save for one account row.
+
+    The role and the assigned profiles were two separate forms with one button
+    standing between them, and the button belonged to the *role* form: tick a
+    profile, press Save, and the role was written while the tick never left the
+    browser. Nothing looked broken -- the button worked, and the flash even
+    confirmed a save. The profiles were simply never part of it.
+
+    One row is one thing to configure, so it is one form and one endpoint.
+
+    The role is applied first because it is the part that can be refused -- the
+    last admin cannot be demoted -- and a refused save must not leave the
+    profiles half written.
+    """
     denied = _require_admin()
     if denied is not None:
         return denied
     lang = _lang()
     username = (request.form.get("username") or "").strip()
-    role = settings.normalise_role(request.form.get("role"))
-    if not settings.set_role(username, role):
-        flash(i18n.t("last_admin", lang), "error")
-    else:
-        flash(i18n.t("role_saved", lang,
-                     name=settings._normalise_username(username)), "success")
-    return redirect("/settings/users")
-
-
-@app.post("/settings/users/grants")
-def users_grants():
-    denied = _require_admin()
-    if denied is not None:
-        return denied
-    lang = _lang()
-    username = (request.form.get("username") or "").strip()
+    name = settings._normalise_username(username)
+    if settings.get_user(username) is None:
+        # Distinguished from a refusal, so an admin who typed a name that is not
+        # there is not told the last admin cannot be demoted.
+        flash(i18n.t("user_save_failed", lang, name=username or "?"), "error")
+        return redirect("/settings/users")
+    # Only when the form carries one. An absent key means "not part of this
+    # save", and `normalise_role(None)` is the least privileged role -- reading
+    # a missing select as "demote everybody" would be a nasty way to be wrong.
+    if "role" in request.form:
+        role = settings.normalise_role(request.form.get("role"))
+        if not settings.set_role(username, role):
+            flash(i18n.t("last_admin", lang), "error")
+            return redirect("/settings/users")
+    # Applied second, and from the checkboxes the operator is looking at: an
+    # unticked box is a revocation, so an empty list clears the row rather than
+    # meaning "unchanged".
     if not settings.set_grants(username, request.form.getlist("grant_profile")):
-        flash(i18n.t("user_create_failed", lang), "error")
-    else:
-        flash(i18n.t("grants_saved", lang,
-                     name=settings._normalise_username(username)), "success")
+        flash(i18n.t("user_save_failed", lang, name=name), "error")
+        return redirect("/settings/users")
+    _user_clients.pop(name, None)
+    flash(i18n.t("account_saved", lang, name=name), "success")
     return redirect("/settings/users")
 
 

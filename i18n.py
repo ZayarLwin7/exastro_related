@@ -135,9 +135,12 @@ TEXT: dict[str, dict[str, str]] = {
     "no_profiles_yet": {
         "en": "No profiles exist yet. Create one in Settings first.",
         "ja": "プロファイルがまだありません。先に設定で作成してください。"},
-    "role_saved": {"en": "Updated the role for '{name}'.", "ja": "「{name}」の権限を更新しました。"},
-    "grants_saved": {"en": "Updated the assigned profiles for '{name}'.",
-                     "ja": "「{name}」に割り当てるプロファイルを更新しました。"},
+    "account_saved": {
+        "en": "Saved the role and the assigned profiles for '{name}'.",
+        "ja": "「{name}」の権限と割り当てプロファイルを保存しました。"},
+    "user_save_failed": {
+        "en": "Could not save '{name}'.",
+        "ja": "「{name}」を保存できませんでした。"},
     "last_admin": {
         "en": "The last admin cannot be demoted or deleted — somebody has to be "
               "able to manage accounts.",

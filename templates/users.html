@@ -83,6 +83,8 @@
   .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
   .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
   .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  .banner{transition:opacity .55s ease,transform .55s ease}
+  .banner.bye{opacity:0;transform:translateY(-8px)}
 </style>
 </head>
 <body>
@@ -166,13 +168,18 @@
     <h2>{{ t('accounts_and_roles') }}</h2>
     <p class="lede" style="margin-bottom:12px">{{ t('role_help') }}</p>
     {% for u in users %}
-    <div class="grantrow">
+    {# One form for the whole row, so the one Save writes the role *and* the
+       profile ticks. They were two forms with the button attached to the role
+       one, which is why ticking a profile and pressing Save changed nothing:
+       the tick was never posted. Delete rides along on `formaction` rather than
+       its own nested form, because HTML does not allow a form inside a form. #}
+    <form class="grantrow" method="post" action="/settings/users/save">
+      <input type="hidden" name="username" value="{{ u.username }}">
       <div class="grantwho">
         {{ u.username }}
         {% if u.username == me %}<span class="badge">{{ t('users_you') }}</span>{% endif %}
       </div>
-      <form method="post" action="/settings/users/grants" class="grantbox">
-        <input type="hidden" name="username" value="{{ u.username }}">
+      <div class="grantbox">
         {% for pr in grantable %}
         <label class="grant">
           <input type="checkbox" name="grant_profile" value="{{ pr.id }}"
@@ -183,29 +190,40 @@
         {% else %}
         <span class="empty">{{ t('no_profiles_yet') }}</span>
         {% endfor %}
-      </form>
+      </div>
       <div class="rowbtns">
-        <form method="post" action="/settings/users/role" class="stack">
-          <input type="hidden" name="username" value="{{ u.username }}">
-          <select class="input selrole" name="role">
-            {% for r in role_choices %}
-            <option value="{{ r.code }}" {% if r.code == u.role %}selected{% endif %}>{{ r.label }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn ghost" type="submit">{{ t('save') }}</button>
-        </form>
+        <select class="input selrole" name="role" aria-label="{{ t('role_label') }}">
+          {% for r in role_choices %}
+          <option value="{{ r.code }}" {% if r.code == u.role %}selected{% endif %}>{{ r.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn ghost" type="submit">{{ t('save') }}</button>
         {% if u.username != me %}
-        <form method="post" action="/settings/users/delete" class="inline">
-          <input type="hidden" name="username" value="{{ u.username }}">
-          <button class="btn warnbtn" type="submit">{{ t('user_delete') }}</button>
-        </form>
+        <button class="btn warnbtn" type="submit"
+                formaction="/settings/users/delete">{{ t('user_delete') }}</button>
         {% endif %}
       </div>
-    </div>
+    </form>
     {% else %}
     <p class="empty">{{ t('users_none') }}</p>
     {% endfor %}
   </div>
 </div>
+
+<script>
+  // Every other page in the app fades its flash out after seven seconds; this
+  // one kept the markup and not the script, so the banner stayed until a
+  // reload and an old confirmation sat above the accounts as if it were the
+  // current state. Same treatment, same timing, same stagger.
+  (function () {
+    var LIFE = 7000;
+    document.querySelectorAll('.banner').forEach(function (b, i) {
+      setTimeout(function () {
+        b.classList.add('bye');
+        setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 600);
+      }, LIFE + i * 400);          // staggered so several stay readable
+    });
+  })();
+</script>
 </body>
 </html>

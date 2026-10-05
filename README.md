@@ -1306,6 +1306,37 @@ checkbox list rather than a multi-select: a native multi-select hides the
 choices behind one click and shows no gateway, so two profiles pointing at
 different environments are indistinguishable. Each option names its target.
 
+**One row is one form, and one Save writes the whole row.** The role picker and
+the profile ticks were two separate forms with a single button standing between
+them — and the button belonged to the *role* form. Tick a profile, press Save,
+and the role was written while the tick never left the browser. Nothing looked
+broken: the button worked, and it even flashed a confirmation. The profiles were
+simply never part of it. The row is now a single form posted to
+`/settings/users/save`, which applies the role and the replacements together.
+
+An unticked box is a revocation, so an empty tick list clears the row rather than
+meaning "unchanged" — the same rule the new-account form uses.
+
+Delete is not a second form inside the row, because HTML does not allow a form
+inside a form: it is a submit button carrying `formaction`, which is the same
+thing with valid markup.
+
+Two details the endpoint refuses to guess at:
+
+- the role is applied **first**, because it is the half that can be refused (the
+  last admin cannot be demoted) and a refused save must not leave the profiles
+  half written;
+- the role is only touched when the form actually carries one.
+  `normalise_role(None)` answers the *least* privileged role, so reading a
+  missing select as a role change would quietly demote everyone except the last
+  admin — the one account `set_role` protects on its own.
+
+**Every page that shows a flash fades it out.** Four pages render flashed
+messages and one had the markup without the script, so its banner stayed until a
+reload and an old confirmation sat above the accounts looking like the current
+state. A test now walks the templates that call `get_flashed_messages` and
+requires each to carry the dismissal, so the next page added does not repeat it.
+
 Sign-out lives in the top-right of the app bar on every signed-in page, next to
 the name of who is signed in. On Settings the link to user accounts is a plain
 link rather than another button, so the bar does not read as a row of actions.

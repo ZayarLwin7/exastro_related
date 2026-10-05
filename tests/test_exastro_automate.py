@@ -5030,6 +5030,122 @@ def test_deleting_a_profile_revokes_the_grants_that_pointed_at_it(roles):
     assert settings.own_active_profile("plain") is None
 
 
+def _row_form(page: str, username: str) -> str:
+    """The form element for one account row, by its hidden username field.
+
+    Read from the page rather than rebuilt from the template: the point of these
+    tests is what the operator's browser would actually submit.
+    """
+    marker = f'name="username" value="{username}"'
+    at = page.index(marker)
+    start = page.rindex("<form", 0, at)
+    return page[start:page.index("</form>", at)]
+
+
+def test_the_account_row_save_writes_the_profile_ticks(roles):
+    """The reported bug, taken exactly as reported: tick a profile, press Save.
+
+    The ticks lived in one form and the button in another, so the button posted
+    the role and the ticks never left the browser. Nothing on the page said so --
+    the button worked, and it even confirmed a save. So the test ticks a box and
+    presses the button that is actually in the row.
+    """
+    c = _login(appmod.app.test_client(), "boss")
+    page = c.get("/settings/users").get_data(as_text=True)
+    row = _row_form(page, "plain")
+    assert 'name="grant_profile"' in row, "no profile ticks in this row"
+    assert "deputy" not in row, "one account's row must not carry another's"
+
+    other = settings.save_profile("second-env",
+                                  {"GATEWAY_URL": "http://ita2:2", "ORG_ID": "o",
+                                   "WORKSPACE_ID": "w2"}, owner="boss")
+    c.post("/settings/users/save",
+           data={"username": "plain", "role": "user",
+                 "grant_profile": [str(roles["shared"]), str(other)]},
+           follow_redirects=True)
+
+    assert settings.granted_profile_ids("plain") == sorted([roles["shared"], other]), \
+        "the ticked profiles were not saved"
+
+
+def test_one_save_writes_the_role_and_the_ticks_together(roles):
+    """Both halves of the row, because a row is one thing to configure."""
+    c = _login(appmod.app.test_client(), "boss")
+    c.post("/settings/users/save",
+           data={"username": "plain", "role": "coadmin",
+                 "grant_profile": [str(roles["shared"])]},
+           follow_redirects=True)
+    assert settings.role_of("plain") == "coadmin"
+    assert settings.granted_profile_ids("plain") == [roles["shared"]]
+
+
+def test_unticking_a_profile_revokes_it_and_saves_the_role_too(roles):
+    """An empty list of ticks is a revocation, not "leave it alone"."""
+    c = _login(appmod.app.test_client(), "boss")
+    c.post("/settings/users/save",
+           data={"username": "plain", "role": "coadmin"},
+           follow_redirects=True)
+    assert settings.granted_profile_ids("plain") == []
+    assert settings.role_of("plain") == "coadmin"
+
+
+def test_a_save_that_carries_no_role_does_not_demote_anybody(roles):
+    """`normalise_role` answers the least privileged role for anything it does
+    not recognise, and `None` is not something it recognises -- so reading a
+    missing select as a role change would quietly demote whoever could be
+    demoted. Only the last admin is protected by `set_role`; everybody else is
+    not."""
+    c = _login(appmod.app.test_client(), "boss")
+    c.post("/settings/users/save",
+           data={"username": "deputy", "grant_profile": [str(roles["shared"])]},
+           follow_redirects=True)
+    assert settings.role_of("deputy") == "coadmin", \
+        "an absent select must not be read as 'plain user'"
+    assert settings.granted_profile_ids("deputy") == [roles["shared"]], \
+        "the grants in the same save must still be applied"
+
+
+def test_the_last_admin_still_cannot_be_demoted_from_this_page(roles):
+    c = _login(appmod.app.test_client(), "boss")
+    before = settings.granted_profile_ids("deputy")
+    c.post("/settings/users/save",
+           data={"username": "boss", "role": "user",
+                 "grant_profile": [str(roles["shared"])]},
+           follow_redirects=True)
+    assert settings.role_of("boss") == "admin"
+    assert settings.granted_profile_ids("deputy") == before, \
+        "a refused save must not leave the rest of the row half written"
+
+
+def test_delete_is_not_a_second_form_inside_the_row(roles):
+    """HTML forbids nesting a form inside a form, so the row is one form and
+    Delete rides on `formaction`. Asserted structurally so a future edit that
+    reaches for a nested form is caught by the parser rather than by the
+    operator."""
+    page = _login(appmod.app.test_client(), "boss").get(
+        "/settings/users").get_data(as_text=True)
+    row = _row_form(page, "plain")
+    assert row.count("<form") == 1, "a form inside the row form is invalid HTML"
+    assert 'formaction="/settings/users/delete"' in row
+    assert "/settings/users/grants" not in page and "/settings/users/role" not in page, \
+        "the two half-save endpoints are gone; the row has one action"
+
+
+def test_every_page_that_shows_a_flash_also_dismisses_it():
+    """Four pages render flashes and one had the markup without the script, so
+    its banner stayed until a reload and an old confirmation sat above the
+    accounts looking like the current state. Checked across the templates so the
+    next page added does not repeat it."""
+    pages = [p for p in (ROOT / "templates").glob("*.html")
+             if "get_flashed_messages" in p.read_text(encoding="utf-8")]
+    assert len(pages) >= 4, "the flash pages moved; check this test"
+    for p in pages:
+        body = p.read_text(encoding="utf-8")
+        assert "setTimeout" in body, f"{p.name} shows a flash that never leaves"
+        assert "bye" in body or "leaving" in body, \
+            f"{p.name} removes the banner without fading it"
+
+
 def test_a_plain_user_needs_a_profile_before_they_can_do_anything(store):
     settings.create_user("boss", "boss-password", role="admin")
     settings.adopt_orphans("boss")
