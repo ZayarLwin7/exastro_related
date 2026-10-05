@@ -207,6 +207,63 @@ def header_section_is_block_list(value: str) -> bool:
     return True
 
 
+def flatten_header_section(value: str) -> str:
+    """What an ``<input type="text">`` does to a value that holds YAML.
+
+    The HTML input value sanitization algorithm *strips line breaks*; it does
+    not collapse runs of whitespace. So the indentation that followed a newline
+    survives, and the join shows up as a gap of two spaces where the break was
+    — ``hosts: localhost  remote_user: bob``, two spaces, not one.
+
+    Knowing that the damage is exactly "the CR and LF are gone and nothing else
+    changed" is what makes a repair provable rather than a guess.
+    """
+    return (value or "").replace("\r\n", "").replace("\n", "").replace("\r", "")
+
+
+def repair_flattened_header_section(value: str,
+                                    profile_id: int | None = None) -> str:
+    """Put back the line breaks an ``<input>`` stripped, when that can be proved.
+
+    A flattened header section has genuinely lost the information that says
+    where its lines began: the characters that carried it are the ones the
+    input deleted. So the only repair offered is one whose original is still on
+    hand — the install default, or another profile that kept its breaks. When
+    none of those reproduce the exact text, the caller is left to refuse the
+    save, because inventing line breaks in YAML is how a movement ends up with
+    a header that parses but means something else.
+
+    Returns the restored section, or "" when there is nothing provable to do.
+    """
+    text = value or ""
+    if not text or header_section_is_block_list(text):
+        return ""          # already fine, or blank: both are left alone
+    for reference in _pristine_header_sections(profile_id):
+        if text == flatten_header_section(reference):
+            return reference
+    return ""
+
+
+def _pristine_header_sections(exclude_id: int | None = None) -> list[str]:
+    """Header sections still known in their original multi-line shape."""
+    out = [str(cfg.HEADER_SECTION or "")]
+    try:
+        rows = _connect().execute(
+            "SELECT id, payload FROM profiles").fetchall()
+    except sqlite3.Error:
+        rows = []
+    for row_id, raw in rows:
+        if exclude_id is not None and row_id == exclude_id:
+            continue      # a profile cannot vouch for its own flattened value
+        try:
+            stored = (json.loads(raw or "{}") or {}).get("HEADER_SECTION") or ""
+        except ValueError:
+            continue
+        if stored and header_section_is_block_list(stored):
+            out.append(stored)
+    return out
+
+
 def _top_level_keys(line: str) -> list[str]:
     """`key:` starts on one line of a block mapping, not several."""
     keys, depth, quote, i = [], 0, None, 0

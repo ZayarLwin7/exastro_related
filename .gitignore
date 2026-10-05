@@ -42,4 +42,6 @@ _v*.db
 # Screenshots dropped in the repo root while reporting a layout problem
 *.PNG
 *.png
+# Copies made by the repair/maintenance tools before they write anything
 creations.db.backup-*
+settings.db.backup-*

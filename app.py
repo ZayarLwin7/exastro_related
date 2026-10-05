@@ -1398,7 +1398,12 @@ def _form_fields(payload: dict, options: dict | None = None,
                 "hint": f.get("hint") or "",
                 "placeholder": f.get("placeholder") or "",
                 "required": bool(f.get("required")),
-                "secret": f["kind"] == "secret", "group": f["group"]}
+                "secret": f["kind"] == "secret", "group": f["group"],
+                # Carried through because the template asks for it by name.
+                # Dropping it here did not make the field fall back to an
+                # ordinary input -- Jinja read the missing key as undefined and
+                # said no, which is indistinguishable from the flag being off.
+                "multiline": bool(f.get("multiline"))}
         if f["kind"] == "secret":
             # Never a value: the real token must not appear in the page source.
             item["value"] = ""
@@ -1515,6 +1520,16 @@ def settings_page():
     base["CLIENT_ID"] = ""
     merged = {**base, **((target or {}).get("payload") or {}),
               **((draft or {}).get("values") or {})}
+    # A section some earlier single-line field squashed is shown restored. Not
+    # to hide the damage -- the flash beside it says what happened -- but
+    # because the squashed form is refused on save, so leaving it in the box
+    # would make the profile uneditable until somebody guessed at line breaks
+    # that the stored value no longer contains.
+    restored = settings.repair_flattened_header_section(
+        merged.get("HEADER_SECTION", ""), (target or {}).get("id"))
+    if restored:
+        merged["HEADER_SECTION"] = restored
+        flash(i18n.t("header_line_breaks_restored", _lang()), "success")
     cl = client_for(username)
     options = _id_options(cl)
     # Only hinted copies reach the template: a stray {{ p.payload.API_TOKEN }} in
@@ -1585,7 +1600,19 @@ def settings_save():
     # input to a form and invalid YAML, and the only place it surfaced was ITA
     # refusing the movement with a line number pointing into text the operator
     # never typed.
-    if not settings.header_section_is_block_list(values.get("HEADER_SECTION", "")):
+    #
+    # A *provably* flattened one is healed rather than refused. Renaming a
+    # profile resubmits the whole form, so a section some earlier single-line
+    # field had already squashed blocked every unrelated edit to that profile —
+    # and the squashed text gives an operator nothing they could repair by
+    # hand, because the characters that said where the lines went are the ones
+    # the input deleted. When the install default or a sibling profile still
+    # reproduces this text exactly, restoring it is a copy, not a guess.
+    header = values.get("HEADER_SECTION", "")
+    restored = settings.repair_flattened_header_section(header, pid)
+    if restored:
+        values["HEADER_SECTION"] = restored
+    elif not settings.header_section_is_block_list(header):
         errors.append(i18n.t("err_header_flattened", lang))
     if errors:
         for message in errors:
@@ -1610,6 +1637,11 @@ def settings_save():
         # profile happens to be selected, so drop it and let the signature decide.
         invalidate_user_client(username)
         flash(i18n.t("set_saved", lang, name=name), "success")
+    if restored:
+        # Said out loud, because it changed text the operator did not type and
+        # a silent correction in a field that decides what every created
+        # playbook runs is not something to slip past.
+        flash(i18n.t("header_line_breaks_restored", lang), "success")
     return redirect("/settings")
 
 

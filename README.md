@@ -1035,6 +1035,66 @@ applied last, which is often the broken value being corrected.
 No YAML library is a dependency; the structural check counts top-level keys per
 line and respects quoting and nesting.
 
+#### The textarea was not actually on the page
+
+The first version of that fix shipped and was still wrong. Two things had to be
+true for the textarea to render, and both had to be repaired:
+
+- the field table marks `HEADER_SECTION` with `"multiline": True`, **and**
+  `_form_fields` has to *carry that flag through to the template*. It built the
+  item dict key by key and left it out. Jinja reads a missing key on a dict as
+  undefined, which is indistinguishable from the flag being off — so
+  `{% elif f.multiline %}` was silently never taken.
+- `HEADER_SECTION` lives in the **advanced** group, and the advanced group
+  renders in its **own loop** from the connection/auth/tuning one. The textarea
+  branch had only been added to the first. A loop that does not know about
+  multiline fields renders them as `<input>` regardless of the flag.
+
+The test that was supposed to cover this read the *template source* and asserted
+the branch existed. It existed. The test now renders `/settings` and asserts the
+element is a `<textarea>` whose value arrives as element content — because
+**asserting on the template cannot see that nothing ever used it.**
+
+What made it visible in the end was the save-time guard, which was the one piece
+that worked: it refused a rename, because a rename resubmits the whole form and
+the flattened value was already in the stored profile.
+
+#### Refusing is not enough on its own
+
+A flattened section is refused at save — but a save is a whole-form POST, so a
+section an earlier field had squashed blocked *every* unrelated edit to that
+profile, including the rename that had nothing to do with it. And the squashed
+text gives an operator nothing to repair by hand: the characters that said where
+the lines went are exactly the ones the `<input>` deleted.
+
+So a provably flattened section is now **restored** rather than refused:
+
+- an `<input>` strips CR and LF and changes nothing else — it does *not* collapse
+  whitespace, so the indentation survives and the join shows as **two** spaces:
+  `localhost  remote_user`. Knowing the damage that precisely is what makes a
+  repair a copy instead of a guess.
+- the only references offered are the install default and sibling profiles that
+  still hold their breaks. If one of them reproduces the text exactly, the
+  original is restored — and said out loud, because it changed text the operator
+  did not type.
+- text that nothing reproduces has genuinely lost the evidence. It stays refused.
+  Inventing line breaks in YAML produces a header that parses and means something
+  else, which is worse than a save that stops and asks.
+
+The same repair runs when the form is *rendered*, so an existing broken profile
+is editable the moment it is opened rather than being a dead end.
+
+Already-stored damage is repaired by a tool, which reports first and only writes
+with `-w`:
+
+```
+python tools/repair_header_sections.py          # report
+python tools/repair_header_sections.py -w       # write (copies the file first)
+```
+
+It is idempotent, it never touches a section it cannot prove, and it leaves the
+cache alone — the service has to be restarted for a per-user client to see it.
+
 ### A failed step takes its dependents with it
 
 `Create Movement` failing used to be followed by

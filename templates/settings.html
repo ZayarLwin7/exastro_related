@@ -326,7 +326,7 @@
           <p class="lede" style="margin-top:6px">{{ t('advanced_note') }}</p>
           <div class="fields">
             {% for f in fields['advanced'] %}
-            <div class="fld">
+            <div class="fld {% if f.multiline %}wide{% endif %}">
               <label for="{{ f.name }}">{{ t(f.label) }}</label>
               {% if f.options %}
               <select id="{{ f.name }}" name="{{ f.name }}">
@@ -338,6 +338,18 @@
                 {% endfor %}
               </select>
               {% if not f.offered and f.value %}<div class="hint">{{ t('not_offered') }}</div>{% endif %}
+              {% elif f.multiline %}
+              {# The same reason as the other groups' textarea branch, and it
+                 matters more here: this is where Header Section actually lives.
+                 The advanced group had its own loop with no textarea branch at
+                 all, so the branch added for the fix was in a loop that never
+                 rendered the field it was written for. A field table that
+                 marks a value as YAML and a template that agrees on the shape
+                 are not the same thing as a page that shows it. #}
+              <textarea id="{{ f.name }}" name="{{ f.name }}" class="mono yaml"
+                        rows="4" spellcheck="false"
+                        placeholder="{{ f.placeholder }}"
+                        {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
               {% else %}
               <input type="text" id="{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}" class="mono">
               {% endif %}

@@ -5951,9 +5951,20 @@ def test_a_single_line_input_cannot_hold_the_header_section(store):
     from the value. So rendering this YAML in one flattened it on every save,
     and the only symptom was ITA refusing the movement with a line number
     pointing into text the operator never typed.
+
+    This one only reads the *source*. It is kept because it is the cheapest
+    place to say what the shape must be, but on its own it proved nothing: the
+    advanced group renders in its own loop, and the branch this test looks for
+    was in the connection/auth/tuning loop, so the page kept showing a
+    single-line field while this stayed green. `test_the_rendered_header_...`
+    below is the one that would have caught it.
     """
     body = (ROOT / "templates" / "settings.html").read_text(encoding="utf-8")
     assert "{% elif f.multiline %}" in body, "no textarea branch for YAML fields"
+    # Every loop that renders a plain text input needs the branch too -- this is
+    # exactly the loop the field actually goes through.
+    assert body.count("{% elif f.multiline %}") >= 2, \
+        "the advanced group renders its fields in a separate loop"
     i = body.index("<textarea", body.index("{% elif f.multiline %}"))
     branch = body[i:body.index("</textarea>", i) + len("</textarea>")]
     assert "<textarea" in branch, "the multiline branch must be a textarea"
@@ -5964,6 +5975,14 @@ def test_a_single_line_input_cannot_hold_the_header_section(store):
 
     field = [f for f in settings.FIELDS if f["key"] == "HEADER_SECTION"][0]
     assert field.get("multiline"), "HEADER_SECTION is not marked multiline"
+    # And the flag has to survive the trip to the template: a dict the builder
+    # forgot the key on reads as undefined in Jinja, which is indistinguishable
+    # from the field not being marked at all.
+    assert appmod._form_fields({"HEADER_SECTION": "x"})["advanced"], \
+        "the advanced group is empty"
+    item = [f for g in appmod._form_fields({"HEADER_SECTION": "x"}).values()
+            for f in g if f["key"] == "HEADER_SECTION"][0]
+    assert item.get("multiline"), "the flag never reached the template"
 
 
 def test_a_flattened_header_section_is_refused_before_it_is_saved(store):
@@ -6209,3 +6228,147 @@ def test_taking_the_store_fixture_redirects_the_history_file(store, tmp_path):
     assert path != ROOT / "creations.db", "still pointing at the live file"
     assert str(path).startswith(str(tmp_path)), (
         f"expected a path under this test's tmp_path, got {path}")
+
+
+def _squashed_profile(name="squashed", header=FLAT_HEADER):
+    """A profile stored the way an <input type="text"> used to store it.
+
+    `save_profile` answers the profile id, which is what the form submits.
+    """
+    return settings.save_profile(name, {
+        "GATEWAY_URL": "http://h:1", "ORG_ID": "o", "WORKSPACE_ID": "w",
+        "HEADER_SECTION": header}, owner="testuser")
+
+
+def test_the_damage_is_the_line_breaks_and_nothing_else(store):
+    """What an <input> does, pinned so the repair rests on it.
+
+    The HTML input value sanitization algorithm strips CR and LF; it does not
+    collapse runs of whitespace. The indentation that followed a newline is
+    therefore still there, which is why a flattened section reads as
+    `localhost  remote_user` with two spaces and not one. A repair that
+    assumed whitespace *collapsing* would look for the wrong signature and
+    quietly fail on the very text it was written for.
+    """
+    assert settings.flatten_header_section(GOOD_HEADER) == FLAT_HEADER
+    assert "localhost  remote_user" in FLAT_HEADER, "two spaces, not one"
+    assert settings.flatten_header_section(GOOD_HEADER) != \
+        " ".join(GOOD_HEADER.split()), "collapsing is not what an input does"
+
+
+def test_a_provably_flattened_header_section_is_restored_not_refused(unlocked, store):
+    """The reported symptom: renaming a profile was refused because a header
+    section somebody else's edit had squashed.
+
+    A save resubmits the whole form, so one damaged field blocked every
+    unrelated edit to that profile -- and the squashed text offers the operator
+    nothing to repair, because the characters that said where the lines went
+    are the ones the input deleted. The seeded "Initial (.env)" profile still
+    holds the same section with its breaks, so this is a copy, not a guess.
+    """
+    saved = _squashed_profile("before")
+    page = unlocked.post("/settings/save", data={
+        "profile_id": saved, "profile_name": "after",
+        "field_GATEWAY_URL": "http://h:1", "field_ORG_ID": "o",
+        "field_WORKSPACE_ID": "w",
+        "field_HEADER_SECTION": FLAT_HEADER},
+        follow_redirects=True).get_data(as_text=True)
+
+    assert "Header Section is YAML" not in page, \
+        "a rename was refused over a field it did not touch"
+    stored = settings.get_profile(saved)
+    assert stored["name"] == "after", "the rename did not go through"
+    assert stored["payload"]["HEADER_SECTION"] == GOOD_HEADER, \
+        "the restored section must be the one that gets stored"
+    # And it is said out loud: it changed text the operator did not type.
+    assert "line breaks" in page
+
+
+def test_a_header_section_with_no_unbroken_original_is_still_refused(unlocked, store):
+    """The repair is a copy, never an invention.
+
+    Text that no surviving section reproduces has genuinely lost the evidence
+    for where its lines began. Putting breaks back at plausible-looking places
+    produces YAML that parses and means something else, which is worse than a
+    save that stops and asks.
+    """
+    saved = _squashed_profile("unknown", "- hosts: db01  remote_user: deploy"
+                                              "  become: yes")
+    page = unlocked.post("/settings/save", data={
+        "profile_id": saved, "profile_name": "renamed anyway",
+        "field_GATEWAY_URL": "http://h:1", "field_ORG_ID": "o",
+        "field_WORKSPACE_ID": "w",
+        "field_HEADER_SECTION": "- hosts: db01  remote_user: deploy"
+                                "  become: yes"},
+        follow_redirects=True).get_data(as_text=True)
+
+    assert "Header Section is YAML" in page, "the guard must still hold"
+    assert settings.get_profile(saved)["name"] == "unknown", \
+        "a refused save must not have renamed anything"
+
+
+def test_the_settings_form_hands_back_yaml_the_operator_can_read(unlocked, store):
+    """The squashed text is refused on save, so showing it would leave the
+    profile uneditable until somebody guessed at breaks the stored value no
+    longer contains."""
+    saved = _squashed_profile()
+    page = unlocked.get(f"/settings?edit={saved}").get_data(as_text=True)
+    # Anchored on the field's own id. Searching forward from the literal
+    # "HEADER_SECTION" would land on the *next* textarea, because that label
+    # prints after the box it belongs to -- a test that reads the wrong box
+    # passes whatever the code under test does.
+    start = page.index('<textarea id="field_HEADER_SECTION"')
+    shown = page[page.index(">", start) + 1:page.index("</textarea>", start)]
+    assert html.unescape(shown) == GOOD_HEADER
+    assert "line breaks" in page, "the correction must not be silent"
+
+
+def test_the_rendered_header_section_field_is_a_textarea(unlocked, store):
+    """The end-to-end shape of the fix, asserted on the page the operator
+    actually receives.
+
+    The template grew a `{% elif f.multiline %}` branch and the field table grew
+    a `multiline` flag, and the old test read both back off the *source* -- so
+    it passed while the field was still a single-line <input> with the YAML
+    sitting in its value attribute, where the HTML parser strips exactly the
+    newlines that are the value. `_form_fields` built the item dict without
+    carrying the flag, Jinja read the missing key as undefined, and the branch
+    was never taken. Asserting on the template cannot see that; rendering it
+    can.
+    """
+    page = unlocked.get("/settings").get_data(as_text=True)
+    field = 'id="field_HEADER_SECTION"'
+    assert f'<textarea {field}' in page, \
+        "Header Section is still a single-line field on the live page"
+    assert f'<input type="text" {field}' not in page
+
+    start = page.index(f'<textarea {field}')
+    opening = page[start:page.index(">", start)]
+    assert "value=" not in opening, \
+        "the section must reach the box as content, not as an attribute"
+    shown = page[page.index(">", start) + 1:page.index("</textarea>", start)]
+    assert html.unescape(shown) == GOOD_HEADER, \
+        "the newlines must survive all the way to the browser"
+
+
+def test_an_unbroken_section_is_left_exactly_as_it_is(store):
+    """No repair when there is nothing to repair: a deliberate one-line block,
+    a blank value, and a valid multi-line section must all survive untouched."""
+    assert settings.repair_flattened_header_section(GOOD_HEADER) == ""
+    assert settings.repair_flattened_header_section("") == ""
+    assert settings.repair_flattened_header_section("- {hosts: h, gather_facts: no}") == ""
+
+
+def test_a_profile_cannot_vouch_for_its_own_squashed_section(store):
+    """Sibling profiles are references because one of them may still hold the
+    original; a profile is never a reference for itself. Restoring from its own
+    stored value would hand back the very text being repaired, and then the
+    repair would always succeed and never mean anything.
+
+    So the value here matches nothing else in the store -- and unlike the
+    install default, which is always on hand, there is no way back to it.
+    """
+    squashed = "- hosts: db01  remote_user: deploy  become: yes"
+    saved = _squashed_profile("only", squashed)
+    assert settings.repair_flattened_header_section(squashed, saved) == ""
+    assert settings.repair_flattened_header_section(squashed) == ""

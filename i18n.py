@@ -626,9 +626,16 @@ TEXT: dict[str, dict[str, str]] = {
               "リンク先が存在しません（上のステップを確認してください）。"},
     "err_header_flattened": {
         "en": "Header Section is YAML and must keep its line breaks -- "
-              "it looks like several settings were joined onto one line.",
+              "it looks like several settings were joined onto one line. "
+              "Put one key and its value on each line.",
         "ja": "ヘッダセクションはYAMLです。改行を保持してください"
-              "（複数の設定が1行に連結されているようです）。"},
+              "（複数の設定が1行に連結されているようです）。"
+              "キーと値は1行に1つずつ入力してください。"},
+    "header_line_breaks_restored": {
+        "en": "Header Section had been joined onto one line; its line breaks "
+              "have been put back from the original text, so nothing was guessed.",
+        "ja": "ヘッダセクションが1行に連結されていたため、元のテキストから改行を"
+              "復元しました（推測による変更ではありません）。"},
     "set_name_required": {"en": "Give the profile a name.",
                           "ja": "プロファイル名を入力してください。"},
     "set_required": {"en": "{field} is required.", "ja": "{field} は必須です。"},
