@@ -1695,15 +1695,19 @@ def test_detail_column_cannot_be_clipped_by_the_card():
     assert ".detailbtn{white-space:nowrap}" in src
 
 
-def test_history_card_is_wide_enough_for_its_table():
+def test_history_card_table_has_no_forced_minimum_width():
+    """The history table used to carry min-width:700px, which forced a horizontal
+    scroll on any viewport narrower than the wrap + padding. The user asked for
+    no scroll; removing the minimum lets the table reflow within the card."""
     src = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-    wrap = int(re.search(r"\.wrap\{max-width:(\d+)px", src).group(1))
-    cols = re.search(r"\.grid\{[^}]*grid-template-columns:([\d.]+)fr ([\d.]+)fr", src)
-    form_f, hist_f = float(cols.group(1)), float(cols.group(2))
-    inner = wrap - 68 - 26                       # page padding + grid gap
-    card = inner * hist_f / (form_f + hist_f) - 60   # minus card padding
-    table_min = int(re.search(r"\.listcard \.tbl\{[^}]*min-width:(\d+)px", src).group(1))
-    assert card >= table_min, f"history card {card:.0f}px < table {table_min}px"
+    rule = re.search(r"\.listcard \.tbl\{([^}]*)\}", src)
+    assert rule, "the .listcard .tbl rule is missing"
+    # The regex above captures only the first matching block; column rules also
+    # contain min-width but those are per-column hints, not a table-wide floor.
+    # Only the table-level min-width forces the outer scroll.
+    body = rule.group(1)
+    assert "min-width" not in body or "min-width:0" in body, \
+        f"history table still forces a minimum width: {rule.group(0)}"
 
 
 # ---------------------------------------------------------------------------
