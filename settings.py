@@ -462,6 +462,31 @@ def init_store() -> None:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meta(
                 key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
+        # Per-user active profile marker. The old design stored `active` on the
+        # profile row itself filtered by owner, which meant a user could never
+        # activate a profile granted to them by an admin -- the UPDATE matched
+        # zero rows because the owner was different. A separate table decouples
+        # "who activated" from "who owns".
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_active_profiles(
+                username TEXT PRIMARY KEY,
+                profile_id INTEGER NOT NULL
+            )""")
+        # One-time migration: copy any existing per-owner active markers into
+        # the new table so upgrades keep their selection.
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "user_active_profiles" in tables and "profiles" in tables:
+            migrated = conn.execute(
+                "SELECT COUNT(*) FROM user_active_profiles").fetchone()[0]
+            if migrated == 0:
+                for row in conn.execute(
+                        "SELECT owner, id FROM profiles WHERE active=1"
+                        " AND owner IS NOT NULL").fetchall():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO user_active_profiles"
+                        " (username, profile_id) VALUES (?,?)",
+                        (_normalise_username(row["owner"]), row["id"]))
         count = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
         if count == 0:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -731,10 +756,22 @@ def active_profile(owner: str | None = None) -> dict | None:
                 "SELECT * FROM profiles WHERE active = 1 ORDER BY id LIMIT 1"
             ).fetchone()
         else:
-            row = conn.execute(
-                "SELECT * FROM profiles WHERE active = 1 AND owner = ?"
-                " ORDER BY id LIMIT 1",
-                (_normalise_username(owner),)).fetchone()
+            # Per-user activation lives in its own table so a user can activate
+            # a profile they were granted (owned by somebody else). Fall back to
+            # the legacy column for installs that have not been migrated yet.
+            owner_name = _normalise_username(owner)
+            pid_row = conn.execute(
+                "SELECT profile_id FROM user_active_profiles WHERE username=?",
+                (owner_name,)).fetchone()
+            if pid_row is not None:
+                row = conn.execute(
+                    "SELECT * FROM profiles WHERE id=?",
+                    (pid_row["profile_id"],)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM profiles WHERE active = 1 AND owner = ?"
+                    " ORDER BY id LIMIT 1",
+                    (owner_name,)).fetchone()
     return _row_profile(row) if row else None
 
 
@@ -958,24 +995,44 @@ def delete_profile(profile_id: int, owner: str | None = None) -> bool:
                 (profile_id, owner_name))
         if not cur.rowcount:
             return False
+        # Clear the per-user activation marker if this user had it active;
+        # otherwise they would keep pointing at a profile that no longer exists.
+        if owner_name is not None:
+            conn.execute(
+                "DELETE FROM user_active_profiles WHERE username=? AND profile_id=?",
+                (owner_name, profile_id))
         if owner_name is None:
             still_active = conn.execute(
                 "SELECT id FROM profiles WHERE active=1").fetchone()
         else:
+            # Check both the new table and the legacy column for fallback safety.
             still_active = conn.execute(
-                "SELECT id FROM profiles WHERE active=1 AND owner=?",
+                "SELECT profile_id FROM user_active_profiles WHERE username=?",
                 (owner_name,)).fetchone()
+            if still_active is None:
+                still_active = conn.execute(
+                    "SELECT id FROM profiles WHERE active=1 AND owner=?",
+                    (owner_name,)).fetchone()
         if still_active is None:                     # never leave zero active
             if owner_name is None:
                 first = conn.execute("SELECT id FROM profiles ORDER BY id"
                                      " LIMIT 1").fetchone()
             else:
                 first = conn.execute(
-                    "SELECT id FROM profiles WHERE owner=? ORDER BY id LIMIT 1",
-                    (owner_name,)).fetchone()
+                    "SELECT p.id FROM profiles p LEFT JOIN profile_grants g"
+                    " ON g.profile_id=p.id AND g.username=?"
+                    " WHERE p.owner=? OR g.username IS NOT NULL"
+                    " ORDER BY p.id LIMIT 1",
+                    (owner_name, owner_name)).fetchone()
             if first:
-                conn.execute("UPDATE profiles SET active=1 WHERE id=?",
-                             (first["id"],))
+                pid = first["id"]
+                if owner_name is None:
+                    conn.execute("UPDATE profiles SET active=1 WHERE id=?", (pid,))
+                else:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO user_active_profiles"
+                        " (username, profile_id) VALUES (?,?)",
+                        (owner_name, pid))
     return True
 
 
@@ -996,17 +1053,21 @@ def activate_profile(profile_id: int, owner: str | None = None) -> dict | None:
             row = conn.execute("SELECT * FROM profiles WHERE id=?",
                                (profile_id,)).fetchone()
         else:
-            if conn.execute(
-                    "SELECT id FROM profiles WHERE id=? AND owner=?",
-                    (profile_id, owner_name)).fetchone() is None:
+            # A user may activate any profile they can *use* — their own or one
+            # an admin granted them. The old check required ownership, which
+            # silently refused every granted profile because the UPDATE matched
+            # zero rows (the owner column held the admin's name, not theirs).
+            if conn.execute("SELECT id FROM profiles WHERE id=?",
+                            (profile_id,)).fetchone() is None:
                 return None
-            conn.execute("UPDATE profiles SET active=0 WHERE owner=?",
-                         (owner_name,))
-            conn.execute("UPDATE profiles SET active=1 WHERE id=? AND owner=?",
-                         (profile_id, owner_name))
-            row = conn.execute(
-                "SELECT * FROM profiles WHERE id=? AND owner=?",
-                (profile_id, owner_name)).fetchone()
+            if not may_use_profile(owner_name, profile_id):
+                return None
+            conn.execute(
+                "INSERT OR REPLACE INTO user_active_profiles"
+                " (username, profile_id) VALUES (?,?)",
+                (owner_name, profile_id))
+            row = conn.execute("SELECT * FROM profiles WHERE id=?",
+                               (profile_id,)).fetchone()
     profile = _row_profile(row)
     if owner_name is None:
         apply(profile["payload"])
