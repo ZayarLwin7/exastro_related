@@ -1553,9 +1553,16 @@ def settings_page():
     # what they work against. They are shown, but never with their secrets and
     # never as something they could edit.
     public = []
+    active_id = (active or {}).get("id")
     for prof in settings.list_profiles(username):
         entry = {**prof, "payload": settings.public_payload(prof),
-                 "granted": prof.get("owner") not in (None, username)}
+                 "granted": prof.get("owner") not in (None, username),
+                 # Active is per-user now, not per-profile: a granted profile
+                 # can be the one this user activated, and it must show the
+                 # badge so they can tell which row is current. The old check
+                 # read the `active` column on the profile row, which only the
+                 # owner's activation ever set.
+                 "active": prof.get("id") == active_id}
         if entry["granted"]:
             entry["payload"] = _without_secrets(entry["payload"])
         public.append(entry)
