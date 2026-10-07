@@ -2076,30 +2076,59 @@ class ExastroClient:
                 "result": self._result(body)}
 
     def download_kym_export(self, execution_no: str, *,
-                            poll_seconds: float = 3.0,
-                            max_wait: float = 120.0) -> bytes:
-        """Download the .kym file produced by a completed export job.
+                                poll_seconds: float = 3.0,
+                                max_wait: float = 120.0) -> bytes:
+            """Retrieve the .kym file produced by a completed export job.
 
-        The export runs asynchronously on ITA.  This method polls the
-        download endpoint until the file is ready (HTTP 200) or *max_wait*
-        seconds have elapsed.  A 404 simply means the export has not
-        finished yet; any other 4xx/5xx is raised immediately.
-        """
-        import time
-        url = f"{self._api}/menu/bulk/export/download/{execution_no}"
-        deadline = time.monotonic() + max_wait
-        while True:
-            resp = self.session.request(
-                "GET", url, headers=self._headers(),
-                timeout=self._v("TIMEOUT"))
-            if resp.status_code == 200:
-                return resp.content
-            if resp.status_code == 404 and time.monotonic() < deadline:
+            In ITA v2.8 there is no separate download REST endpoint.  The
+            ``menu_export_import_list`` filter API embeds the .kym content
+            directly in each record's ``file.file_name`` field as a
+            base64-encoded gzip tar archive.  This method polls that list
+            until the record for *execution_no* shows status "Completed",
+            then decodes and returns the raw bytes.
+            """
+            import base64
+            import gzip
+            import time
+
+            deadline = time.monotonic() + max_wait
+            while True:
+                body = self._request(
+                    "POST",
+                    f"{self._api}/menu/menu_export_import_list/filter/",
+                    json={},
+                )
+                records = body.get("data", []) if isinstance(body, dict) else []
+                target = None
+                for rec in records:
+                    param = rec.get("parameter", {})
+                    if isinstance(param, dict) and param.get("execution_no") == execution_no:
+                        target = rec
+                        break
+
+                if target is not None:
+                    param = target.get("parameter", {})
+                    status = param.get("status", "") if isinstance(param, dict) else ""
+                    if status == "Completed":
+                        file_info = target.get("file", {})
+                        b64_data = file_info.get("file_name", "") if isinstance(file_info, dict) else ""
+                        if b64_data:
+                            try:
+                                raw = base64.b64decode(b64_data)
+                                return gzip.decompress(raw)
+                            except Exception as exc:
+                                raise ExastroError(
+                                    f"Failed to decode export file: {exc}")
+                        raise ExastroError(
+                            "Export completed but file data is empty")
+                    if status in ("Failed", "Error"):
+                        raise ExastroError(f"Export failed with status: {status}")
+
+                if time.monotonic() >= deadline:
+                    raise ExastroError(
+                        f"Export did not complete within {max_wait}s "
+                        f"(last status: {target.get('parameter', {}).get('status', 'not found') if target else 'not found'})")
                 time.sleep(poll_seconds)
-                continue
-            raise ExastroError(
-                f"Export download failed: HTTP {resp.status_code}: "
-                f"{resp.text[:500]}")
 
     def upload_kym_import(self, filename: str, data: bytes) -> dict:
         """Upload a .kym file for import. Returns {upload_id, file_name, import_list}.
