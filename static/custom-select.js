@@ -139,5 +139,3 @@
   }
   window.CSUpgrade = upgradeAll;
 })();
-
-</content>
