@@ -177,3 +177,28 @@ body{
 html[data-theme=light] input,html[data-theme=light] select,
 html[data-theme=light] textarea{color-scheme:light}
 :root{color-scheme:dark}
+
+/* Custom dropdown — replaces native <select class="input"> popups.
+ * The JS below wraps each select in a .cs-wrap, hides the native element,
+ * and builds a styled trigger + popup from its <option> children.
+ * Form submission still works because the hidden <select> keeps its value. */
+.cs-wrap{position:relative;display:inline-flex;width:100%}
+.cs-trigger{display:flex;align-items:center;justify-content:space-between;width:100%;
+  background:rgba(var(--field-rgb),.25);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;font-size:14px;color:var(--txt);font-family:var(--sans);cursor:pointer;
+  transition:border-color .15s,box-shadow .15s,background .15s;user-select:none;text-align:left}
+.cs-trigger:hover{border-color:var(--line-strong);background:rgba(var(--field-rgb),.35)}
+.cs-trigger:focus,.cs-wrap.open .cs-trigger{outline:none;border-color:var(--acc);box-shadow:0 0 0 4px rgba(var(--acc-rgb),.18);background:rgba(var(--field-rgb),.35)}
+.cs-chevron{width:16px;height:16px;flex-shrink:0;margin-left:8px;transition:transform .2s}
+.cs-wrap.open .cs-chevron{transform:rotate(180deg)}
+.cs-popup{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:999;
+  background:var(--option-bg);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 12px 32px rgba(0,0,0,.25);padding:4px;max-height:260px;overflow-y:auto;
+  opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .18s ease,transform .18s ease,visibility .18s}
+.cs-wrap.open .cs-popup{opacity:1;visibility:visible;transform:translateY(0)}
+.cs-option{padding:9px 12px;border-radius:8px;font-size:13.5px;color:var(--txt);cursor:pointer;
+  transition:background .12s,color .12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cs-option:hover,.cs-option.highlighted{background:rgba(var(--acc-rgb),.15);color:var(--txt)}
+.cs-option.selected{background:rgba(var(--acc-rgb),.25);font-weight:600}
+.cs-option.selected:hover{background:rgba(var(--acc-rgb),.32)}

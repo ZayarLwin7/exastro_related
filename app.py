@@ -1766,10 +1766,7 @@ def settings_test():
 
 @app.get("/settings/migration")
 def migration_page():
-    """Admin-only page for exporting/importing workspace configuration."""
-    denied = _require_admin()
-    if denied is not None:
-        return denied
+    """Page for exporting/importing workspace configuration (all users)."""
     username = current_user()
     cl = client_for(username)
     menus = []
@@ -1795,9 +1792,6 @@ def migration_page():
 @app.get("/settings/migration/resolve")
 def migration_resolve():
     """Return JSON list of menus related to a given movement_id."""
-    denied = _require_admin()
-    if denied is not None:
-        return jsonify({"error": "denied"}), 403
     movement_id = request.args.get("movement_id", "")
     if not movement_id:
         return jsonify({"error": "movement_id required"}), 400
@@ -1813,9 +1807,6 @@ def migration_resolve():
 @app.post("/settings/migration/export")
 def migration_export():
     """Execute a .kym export and stream the file back to the browser."""
-    denied = _require_admin()
-    if denied is not None:
-        return denied
     lang = _lang()
     selected = request.form.getlist("menu_rest")
     if not selected:
@@ -1854,9 +1845,6 @@ def _v(key: str, cl) -> str:
 @app.post("/settings/migration/import")
 def migration_import():
     """Upload a .kym file and execute the import into the current workspace."""
-    denied = _require_admin()
-    if denied is not None:
-        return denied
     lang = _lang()
     f = request.files.get("kym_file")
     if not f or not f.filename:
