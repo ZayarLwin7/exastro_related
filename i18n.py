@@ -149,6 +149,32 @@ TEXT: dict[str, dict[str, str]] = {
         "en": "This person has no profile of their own, so assign at least one "
               "for them to be able to run anything.",
         "ja": "このユーザーには専用プロファイルがないため、実行できるように1つ以上割り当ててください。"},
+    "mig_title": {"en": "Migration", "ja": "移行"},
+    "mig_lede": {
+        "en": "Export or import workspace data as a .kym bundle for migration between environments.",
+        "ja": "環境間の移行のため、ワークスペースデータを.kymバンドルとしてエクスポートまたはインポートします。"},
+    "mig_export_card": {"en": "Export from this workspace", "ja": "このワークスペースからエクスポート"},
+    "mig_export_hint": {
+        "en": "Select the menus to include. Discarded rows and history are excluded automatically.",
+        "ja": "含めるメニューを選択してください。廃止済みデータと履歴は自動的に除外されます。"},
+    "mig_select_all": {"en": "Select all", "ja": "すべて選択"},
+    "mig_export_btn": {"en": "Download .kym", "ja": ".kymをダウンロード"},
+    "mig_import_card": {"en": "Import into this workspace", "ja": "このワークスペースにインポート"},
+    "mig_import_hint": {
+        "en": "Upload a .kym file exported from another environment. Hosts and hostgroups must already exist in the target if they differ.",
+        "ja": "別の環境からエクスポートした.kymファイルをアップロードします。ホストやホストグループが異なる場合は、事前にターゲットに作成してください。"},
+    "mig_import_btn": {"en": "Upload and import", "ja": "アップロードしてインポート"},
+    "mig_no_menus": {"en": "Select at least one menu to export.", "ja": "エクスポートするメニューを1つ以上選択してください。"},
+    "mig_no_file": {"en": "Choose a .kym file to upload.", "ja": "アップロードする.kymファイルを選択してください。"},
+    "mig_bad_ext": {"en": "The file must have a .kym extension.", "ja": "ファイルの拡張子は.kymである必要があります。"},
+    "mig_export_failed": {"en": "Export failed: {error}", "ja": "エクスポートに失敗しました: {error}"},
+    "mig_import_failed": {"en": "Import failed: {error}", "ja": "インポートに失敗しました: {error}"},
+    "mig_import_ok": {
+        "en": "Import started successfully (job {no}). Check ITA for progress.",
+        "ja": "インポートが正常に開始されました（ジョブ{no}）。進捗はITAで確認してください。"},
+    "mig_api_error": {
+        "en": "Could not load the export menu list: {error}",
+        "ja": "エクスポートメニュー一覧を読み込めませんでした: {error}"},
     "own_profile_missing": {
         "en": "You do not have a connection profile yet. Create your own in "
               "Settings -- each person's profiles are private, so nobody "

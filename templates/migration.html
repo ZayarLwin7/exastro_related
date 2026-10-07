@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ t('mig_title') }} &middot; {{ t('app_name') }}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="alternate icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  .appbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 14px;padding:18px 34px;border-bottom:1px solid var(--line)}
+  .bartitle{min-width:0;flex:1 1 200px}
+  .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+  .logo svg{width:19px;height:19px}
+  .appbar h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .appbar .subtitle{color:var(--mut);font-size:13px;font-weight:500}
+  .appbar .spacer{flex:1}
+  .wrap{max-width:900px;margin:0 auto;padding:26px 34px 70px}
+  .backbtn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--mut);text-decoration:none;font-size:12px;font-weight:650}
+  .backbtn:hover{color:var(--txt);border-color:rgba(var(--hi-rgb),.22)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px 26px;margin-bottom:20px}
+  h2{font-size:15px;font-weight:700;margin-bottom:6px}
+  .lede{color:var(--mut);font-size:12.5px;line-height:1.6}
+  .btn{padding:9px 15px;border:0;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--on-acc);background:linear-gradient(135deg,var(--acc),var(--acc2));transition:filter .15s}
+  .btn:hover{filter:brightness(1.06)}
+  .menulist{display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid var(--line);border-radius:12px;background:rgba(var(--field-rgb),.18);max-height:340px;overflow-y:auto}
+  .menuitem{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;font-size:13px;color:var(--txt);cursor:pointer}
+  .menuitem:hover{background:rgba(var(--field-rgb),.35)}
+  .menuitem input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer}
+  .menuitem .mname{font-weight:600}
+  .menuitem .mrest{color:var(--mut);font-size:11.5px;font-family:var(--mono);margin-left:auto}
+  .menuitem .mgroup{color:var(--dim);font-size:11px}
+  .selectall{font-size:11.5px;font-weight:600;color:var(--acc);cursor:pointer;text-decoration:none;margin-bottom:8px;display:inline-block}
+  .selectall:hover{text-decoration:underline}
+  .fileinput{margin:12px 0}
+  .fileinput input[type=file]{font-size:13px;color:var(--txt)}
+  .actions{margin-top:16px;display:flex;gap:10px;align-items:center}
+  .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
+  .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
+  .banner.ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.28);color:var(--ok-text)}
+  .banner{transition:opacity .55s ease,transform .55s ease}
+  .banner.bye{opacity:0;transform:translateY(-8px)}
+  .empty{color:var(--mut);font-size:12.5px;padding:10px 2px}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+  </div>
+  <div class="bartitle">
+    <h1>{{ t('mig_title') }}</h1>
+    <div class="subtitle">{{ t('mig_lede') }}</div>
+  </div>
+  <div class="spacer"></div>
+  {% if current_user %}
+  <a class="backbtn" href="/settings">&larr; {{ t('back') }}</a>
+  {% endif %}
+</header>
+
+<div class="wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="banner {{ 'err' if category == 'error' else 'ok' }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if error %}
+  <div class="banner err">{{ t('mig_api_error', error=error) }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>{{ t('mig_export_card') }}</h2>
+    <p class="lede" style="margin-bottom:12px">{{ t('mig_export_hint') }}</p>
+    <form method="post" action="/settings/migration/export">
+      {% if menus %}
+      <a class="selectall" id="selall">{{ t('mig_select_all') }}</a>
+      <div class="menulist">
+        {% for m in menus %}
+        <label class="menuitem">
+          <input type="checkbox" name="menu_rest" value="{{ m.menu_name_rest }}">
+          <span class="mname">{{ m.menu_name }}</span>
+          <span class="mgroup">{{ m.menu_group_name }}</span>
+          <span class="mrest">{{ m.menu_name_rest }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit">{{ t('mig_export_btn') }}</button>
+      </div>
+      {% else %}
+      <p class="empty">{{ t('no_profiles_yet') }}</p>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>{{ t('mig_import_card') }}</h2>
+    <p class="lede" style="margin-bottom:12px">{{ t('mig_import_hint') }}</p>
+    <form method="post" action="/settings/migration/import" enctype="multipart/form-data">
+      <div class="fileinput">
+        <input type="file" name="kym_file" accept=".kym" required>
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit">{{ t('mig_import_btn') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('selall');
+    if (!btn) return;
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var boxes = document.querySelectorAll('input[name="menu_rest"]');
+      var allChecked = Array.from(boxes).every(function (b) { return b.checked; });
+      boxes.forEach(function (b) { b.checked = !allChecked; });
+    });
+  })();
+  (function () {
+    var LIFE = 7000;
+    document.querySelectorAll('.banner').forEach(function (b, i) {
+      setTimeout(function () {
+        b.classList.add('bye');
+        setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 600);
+      }, LIFE + i * 400);
+    });
+  })();
+</script>
+</body>
+</html>

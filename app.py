@@ -35,7 +35,7 @@ from datetime import datetime
 
 from urllib.parse import urlparse
 
-from flask import (Flask, abort, flash, jsonify, redirect, render_template,
+from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template,
                    request, session)
 
 import config as cfg
@@ -1758,6 +1758,107 @@ def settings_test():
                  menu_groups=result["menu_groups"],
                  base=result["api_base"]), "success")
     return redirect("/settings")
+
+
+# ---------------------------------------------------------------------------
+# Migration: export / import workspace data via Exastro .kym bundles
+# ---------------------------------------------------------------------------
+
+@app.get("/settings/migration")
+def migration_page():
+    """Admin-only page for exporting/importing workspace configuration."""
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    username = current_user()
+    cl = client_for(username)
+    menus = []
+    error = ""
+    try:
+        menus = cl.get_export_menu_list()
+    except Exception as exc:
+        error = str(exc)
+    return render_template(
+        "migration.html",
+        menus=menus,
+        error=error,
+        cfg=_request_config(),
+        current_user=username,
+        theme=_theme(),
+        html_lang="ja" if _lang() == "ja" else "en",
+    )
+
+
+@app.post("/settings/migration/export")
+def migration_export():
+    """Execute a .kym export and stream the file back to the browser."""
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    lang = _lang()
+    selected = request.form.getlist("menu_rest")
+    if not selected:
+        flash(i18n.t("mig_no_menus", lang), "error")
+        return redirect("/settings/migration")
+    username = current_user()
+    cl = client_for(username)
+    try:
+        result = cl.execute_kym_export(selected)
+        if result.get("result") != "OK":
+            flash(i18n.t("mig_export_failed", lang, error=result.get("result", "")), "error")
+            return redirect("/settings/migration")
+        execution_no = result["execution_no"]
+        # The export runs asynchronously on ITA; we poll briefly for completion.
+        # For small workspaces this is usually instant.
+        kym_bytes = cl.download_kym_export(execution_no)
+    except Exception as exc:
+        flash(i18n.t("mig_export_failed", lang, error=str(exc)), "error")
+        return redirect("/settings/migration")
+    filename = f"ita_export_{_v('WORKSPACE_ID', cl)}_{execution_no}.kym"
+    return Response(
+        kym_bytes,
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _v(key: str, cl) -> str:
+    """Read a value from a per-instance client without touching cfg."""
+    try:
+        return str(cl._v(key) or "")
+    except Exception:
+        return ""
+
+
+@app.post("/settings/migration/import")
+def migration_import():
+    """Upload a .kym file and execute the import into the current workspace."""
+    denied = _require_admin()
+    if denied is not None:
+        return denied
+    lang = _lang()
+    f = request.files.get("kym_file")
+    if not f or not f.filename:
+        flash(i18n.t("mig_no_file", lang), "error")
+        return redirect("/settings/migration")
+    if not f.filename.endswith(".kym"):
+        flash(i18n.t("mig_bad_ext", lang), "error")
+        return redirect("/settings/migration")
+    username = current_user()
+    cl = client_for(username)
+    try:
+        upload = cl.upload_kym_import(f.filename, f.read())
+        if upload.get("result") != "OK":
+            flash(i18n.t("mig_import_failed", lang, error=upload.get("result", "")), "error")
+            return redirect("/settings/migration")
+        exec_result = cl.execute_kym_import(upload["upload_id"], upload["file_name"])
+        if exec_result.get("result") != "OK":
+            flash(i18n.t("mig_import_failed", lang, error=exec_result.get("result", "")), "error")
+            return redirect("/settings/migration")
+        flash(i18n.t("mig_import_ok", lang, no=exec_result.get("execution_no", "")), "success")
+    except Exception as exc:
+        flash(i18n.t("mig_import_failed", lang, error=str(exc)), "error")
+    return redirect("/settings/migration")
 
 
 init_db()
