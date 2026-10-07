@@ -52,9 +52,10 @@
   .empty{color:var(--mut);font-size:12.5px;padding:10px 2px}
   .moveselect{margin-bottom:14px;display:flex;align-items:center;gap:10px}
   .moveselect label{font-size:12.5px;font-weight:650;color:var(--txt);white-space:nowrap}
-  .moveselect select{flex:1;max-width:420px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--txt);font-family:inherit;font-size:13px;color-scheme:dark light}
-  .moveselect select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(var(--hi-rgb),.15)}
-  .moveselect select option{background:var(--panel-2);color:var(--txt)}
+  .moveselect select{flex:1;max-width:420px;appearance:none;-webkit-appearance:none;-moz-appearance:none;background:rgba(var(--field-rgb),.25);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding:12px 36px 12px 14px;border:1px solid var(--line);border-radius:12px;color:var(--txt);font-family:inherit;font-size:14px;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+  .moveselect select:hover{border-color:var(--line-strong);background:rgba(var(--field-rgb),.35)}
+  .moveselect select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 4px rgba(var(--acc-rgb),.18);background:rgba(var(--field-rgb),.35)}
+  .moveselect select option{background:var(--panel);color:var(--txt)}
   .resolving{color:var(--mut);font-size:12px;font-style:italic}
 </style>
 </head>
@@ -91,7 +92,7 @@
       {% if movements %}
       <div class="moveselect">
         <label for="movement_pick">{{ t('mig_movement_label') }}</label>
-        <select id="movement_pick">
+        <select class="input" id="movement_pick">
           <option value="">{{ t('mig_all_menus') }}</option>
           {% for mv in movements %}
           <option value="{{ mv.movement_id }}" data-orch="{{ mv.orchestrator }}">{{ mv.movement_name }} ({{ mv.orchestrator }})</option>
