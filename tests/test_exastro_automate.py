@@ -2256,7 +2256,7 @@ def test_fallback_labels_are_hidden_but_still_stored():
 def test_settings_page_renders_ids_as_dropdowns_with_labels(unlocked, store):
     page = unlocked.get("/settings").get_data(as_text=True)
     for key in ID_FIELDS:
-        assert re.search(r'<select id="field_%s"[^>]*name="field_%s"' % (key, key),
+        assert re.search(r'<select[^>]*id="field_%s"[^>]*name="field_%s"' % (key, key),
                          page), key
     # label first: a box that reads "3 · Ansible Legacy Role" looks like a
     # number field, which is exactly what the operator must not be facing

@@ -138,10 +138,10 @@
     <a class="backlink" href="/settings/users" title="{{ t('users_title') }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
       {{ t('users_title') }}</a>
+    {% endif %}
     <a class="backlink" href="/settings/migration" title="{{ t('mig_title') }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       {{ t('mig_title') }}</a>
-    {% endif %}
     <form method="post" action="/logout">
       <button class="logoutbtn" type="submit">{{ t('logout') }}</button>
     </form>
@@ -332,7 +332,7 @@
             <div class="fld {% if f.multiline %}wide{% endif %}">
               <label for="{{ f.name }}">{{ t(f.label) }}</label>
               {% if f.options %}
-              <select id="{{ f.name }}" name="{{ f.name }}">
+              <select class="input" id="{{ f.name }}" name="{{ f.name }}">
                 {% if not f.offered and f.value %}
                 <option value="{{ f.value }}" selected>{{ f.value }} — {{ t('not_offered') }}</option>
                 {% endif %}
