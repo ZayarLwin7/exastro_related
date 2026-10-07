@@ -6,7 +6,7 @@
 <title>{{ t('mig_title') }} &middot; {{ t('app_name') }}</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="alternate icon" href="/static/favicon.ico">
-<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/theme.css?v=2">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   .appbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 14px;padding:18px 34px;border-bottom:1px solid var(--line)}
@@ -226,6 +226,6 @@
     drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('dragover'); });
   })();
 </script>
-<script src="/static/custom-select.js"></script>
+<script src="/static/custom-select.js?v=2"></script>
 </body>
 </html>

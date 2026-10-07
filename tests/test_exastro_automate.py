@@ -2613,7 +2613,7 @@ def test_japanese_renders_in_noto_sans_jp():
 def test_every_page_loads_the_shared_palette():
     for tpl in PAGES:
         src = (ROOT / "templates" / tpl).read_text(encoding="utf-8")
-        assert 'href="/static/theme.css"' in src, tpl
+        assert 'href="/static/theme.css' in src, tpl
         assert 'data-theme="{{ theme }}"' in src, tpl
         assert ":root{" not in src, f"{tpl} still redeclares the palette"
         # a page-level body rule would outrank the shared one and freeze the
