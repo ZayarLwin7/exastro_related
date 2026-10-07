@@ -157,6 +157,9 @@ TEXT: dict[str, dict[str, str]] = {
     "mig_export_hint": {
         "en": "Select the menus to include. Discarded rows and history are excluded automatically.",
         "ja": "含めるメニューを選択してください。廃止済みデータと履歴は自動的に除外されます。"},
+    "mig_movement_label": {"en": "Movement:", "ja": "Movement:"},
+    "mig_all_menus": {"en": "All menus (full export)", "ja": "全メニュー（完全エクスポート）"},
+    "mig_resolving": {"en": "Resolving related menus…", "ja": "関連メニューを解決中…"},
     "mig_select_all": {"en": "Select all", "ja": "すべて選択"},
     "mig_export_btn": {"en": "Download .kym", "ja": ".kymをダウンロード"},
     "mig_import_card": {"en": "Import into this workspace", "ja": "このワークスペースにインポート"},

@@ -1773,20 +1773,41 @@ def migration_page():
     username = current_user()
     cl = client_for(username)
     menus = []
+    movements = []
     error = ""
     try:
         menus = cl.get_export_menu_list()
+        movements = cl.list_movements()
     except Exception as exc:
         error = str(exc)
     return render_template(
         "migration.html",
         menus=menus,
+        movements=movements,
         error=error,
         cfg=_request_config(),
         current_user=username,
         theme=_theme(),
         html_lang="ja" if _lang() == "ja" else "en",
     )
+
+
+@app.get("/settings/migration/resolve")
+def migration_resolve():
+    """Return JSON list of menus related to a given movement_id."""
+    denied = _require_admin()
+    if denied is not None:
+        return jsonify({"error": "denied"}), 403
+    movement_id = request.args.get("movement_id", "")
+    if not movement_id:
+        return jsonify({"error": "movement_id required"}), 400
+    username = current_user()
+    cl = client_for(username)
+    try:
+        menus = cl.resolve_movement_menus(movement_id)
+        return jsonify({"menus": menus})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.post("/settings/migration/export")

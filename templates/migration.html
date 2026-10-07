@@ -42,6 +42,11 @@
   .banner{transition:opacity .55s ease,transform .55s ease}
   .banner.bye{opacity:0;transform:translateY(-8px)}
   .empty{color:var(--mut);font-size:12.5px;padding:10px 2px}
+  .moveselect{margin-bottom:14px;display:flex;align-items:center;gap:10px}
+  .moveselect label{font-size:12.5px;font-weight:650;color:var(--txt);white-space:nowrap}
+  .moveselect select{flex:1;max-width:420px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--txt);font-family:inherit;font-size:13px}
+  .moveselect select:focus{outline:none;border-color:var(--acc)}
+  .resolving{color:var(--mut);font-size:12px;font-style:italic}
 </style>
 </head>
 <body>
@@ -74,11 +79,23 @@
     <h2>{{ t('mig_export_card') }}</h2>
     <p class="lede" style="margin-bottom:12px">{{ t('mig_export_hint') }}</p>
     <form method="post" action="/settings/migration/export">
+      {% if movements %}
+      <div class="moveselect">
+        <label for="movement_pick">{{ t('mig_movement_label') }}</label>
+        <select id="movement_pick">
+          <option value="">{{ t('mig_all_menus') }}</option>
+          {% for mv in movements %}
+          <option value="{{ mv.movement_id }}" data-orch="{{ mv.orchestrator }}">{{ mv.movement_name }} ({{ mv.orchestrator }})</option>
+          {% endfor %}
+        </select>
+        <span id="resolve_status" class="resolving" style="display:none"></span>
+      </div>
+      {% endif %}
       {% if menus %}
       <a class="selectall" id="selall">{{ t('mig_select_all') }}</a>
-      <div class="menulist">
+      <div class="menulist" id="menu_list">
         {% for m in menus %}
-        <label class="menuitem">
+        <label class="menuitem" data-rest="{{ m.menu_name_rest }}">
           <input type="checkbox" name="menu_rest" value="{{ m.menu_name_rest }}">
           <span class="mname">{{ m.menu_name }}</span>
           <span class="mgroup">{{ m.menu_group_name }}</span>
@@ -111,11 +128,58 @@
 
 <script>
   (function () {
+    var sel = document.getElementById('movement_pick');
+    var statusEl = document.getElementById('resolve_status');
+    if (!sel) return;
+
+    sel.addEventListener('change', function () {
+      var mid = sel.value;
+      var items = document.querySelectorAll('#menu_list .menuitem');
+      var boxes = document.querySelectorAll('input[name="menu_rest"]');
+
+      if (!mid) {
+        items.forEach(function (el) { el.style.display = ''; });
+        boxes.forEach(function (b) { b.checked = false; });
+        if (statusEl) statusEl.style.display = 'none';
+        return;
+      }
+
+      if (statusEl) { statusEl.textContent = '{{ t("mig_resolving") }}'; statusEl.style.display = ''; }
+
+      fetch('/settings/migration/resolve?movement_id=' + encodeURIComponent(mid))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (statusEl) statusEl.style.display = 'none';
+          if (data.error) { console.error(data.error); return; }
+          var resolved = data.menus || [];
+          var restSet = {};
+          resolved.forEach(function (m) { restSet[m.menu_name_rest] = true; });
+
+          items.forEach(function (el) {
+            var rest = el.getAttribute('data-rest');
+            if (restSet[rest]) {
+              el.style.display = '';
+              var cb = el.querySelector('input[type="checkbox"]');
+              if (cb) cb.checked = true;
+            } else {
+              el.style.display = 'none';
+              var cb2 = el.querySelector('input[type="checkbox"]');
+              if (cb2) cb2.checked = false;
+            }
+          });
+        })
+        .catch(function (err) {
+          if (statusEl) { statusEl.textContent = 'Error'; statusEl.style.display = ''; }
+          console.error(err);
+        });
+    });
+  })();
+  (function () {
     var btn = document.getElementById('selall');
     if (!btn) return;
     btn.addEventListener('click', function (e) {
       e.preventDefault();
-      var boxes = document.querySelectorAll('input[name="menu_rest"]');
+      var boxes = document.querySelectorAll('#menu_list .menuitem:not([style*="display: none"]) input[name="menu_rest"]');
       var allChecked = Array.from(boxes).every(function (b) { return b.checked; });
       boxes.forEach(function (b) { b.checked = !allChecked; });
     });

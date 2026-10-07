@@ -2130,6 +2130,130 @@ class ExastroClient:
                         f"(last status: {target.get('parameter', {}).get('status', 'not found') if target else 'not found'})")
                 time.sleep(poll_seconds)
 
+    # ---------------- movement-based export resolution ----------------
+
+    _ORCH_MENU_MAP = {
+        "Ansible Legacy": [
+            "movement_list",
+            "movement_list_ansible_legacy",
+            "movement_playbook_link",
+            "movement_variable_assoc_list_ansible_legacy",
+            "subst_value_auto_reg_setting_ansible_legacy",
+            "operation_list",
+            "host_link_list",
+            "hostgroup_management",
+            "hostgroup_parent_child_link_list",
+            "conductor_class_list",
+        ],
+        "Ansible Legacy Role": [
+            "movement_list",
+            "movement_list_ansible_role",
+            "movement_role_link",
+            "movement_variable_assoc_list_ansible_role",
+            "subst_value_auto_reg_setting_ansible_role",
+            "nested_variable_list",
+            "nested_variable_member_list",
+            "nested_variable_array_combination_list",
+            "operation_list",
+            "host_link_list",
+            "hostgroup_management",
+            "hostgroup_parent_child_link_list",
+            "conductor_class_list",
+        ],
+        "Ansible Pioneer": [
+            "movement_list",
+            "movement_list_ansible_pioneer",
+            "movement_dialogue_type_link",
+            "movement_variable_assoc_list_ansible_pioneer",
+            "subst_value_auto_reg_setting_ansible_pioneer",
+            "operation_list",
+            "host_link_list",
+            "hostgroup_management",
+            "hostgroup_parent_child_link_list",
+            "conductor_class_list",
+        ],
+    }
+    _COMMON_EXPORT_MENUS = [
+        "operation_list",
+        "host_link_list",
+        "hostgroup_management",
+        "hostgroup_parent_child_link_list",
+        "conductor_class_list",
+    ]
+
+    def list_movements(self) -> list[dict]:
+        """Return movements available for export selection.
+
+        Returns a list of dicts with keys: movement_id, movement_name,
+        orchestrator.  Only non-discarded movements are included.
+        """
+        body = self._request(
+            "POST", f"{self._api}/menu/movement_list/filter/", json={})
+        records = body.get("data", []) if isinstance(body, dict) else []
+        out = []
+        for rec in records:
+            p = rec.get("parameter", {})
+            if not isinstance(p, dict):
+                continue
+            if str(p.get("discard", "0")) == "1":
+                continue
+            mid = p.get("movement_id", "")
+            mname = p.get("movement_name", "")
+            orch = p.get("orchestrator", "")
+            if mid:
+                out.append({
+                    "movement_id": mid,
+                    "movement_name": mname,
+                    "orchestrator": orch,
+                })
+        return out
+
+    def resolve_movement_menus(self, movement_id: str) -> list[dict]:
+        """Given a movement_id, return the related export menu list.
+
+        Looks up the movement's orchestrator type and returns the
+        corresponding set of menu_name_rest values that should be
+        exported together.  Each dict has keys: menu_name_rest,
+        menu_name, menu_group_name.
+
+        Menus that don't exist in this workspace (e.g. driver not
+        installed) are silently skipped.
+        """
+        movements = self.list_movements()
+        orchestrator = ""
+        for m in movements:
+            if m["movement_id"] == movement_id:
+                orchestrator = m["orchestrator"]
+                break
+
+        menu_rests = self._ORCH_MENU_MAP.get(orchestrator)
+        if menu_rests is None:
+            menu_rests = ["movement_list"] + self._COMMON_EXPORT_MENUS
+
+        seen = set()
+        unique_rests = []
+        for r in menu_rests:
+            if r not in seen:
+                seen.add(r)
+                unique_rests.append(r)
+
+        all_menus = self.get_export_menu_list()
+        menu_lookup = {m["menu_name_rest"]: m for m in all_menus}
+
+        result = []
+        for rest in unique_rests:
+            if rest in menu_lookup:
+                result.append(menu_lookup[rest])
+            else:
+                result.append({
+                    "id": "",
+                    "menu_name": rest,
+                    "menu_name_rest": rest,
+                    "menu_group_name": "(not available)",
+                })
+
+        return result
+
     def upload_kym_import(self, filename: str, data: bytes) -> dict:
         """Upload a .kym file for import. Returns {upload_id, file_name, import_list}.
 
