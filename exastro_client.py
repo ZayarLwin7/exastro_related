@@ -2075,21 +2075,31 @@ class ExastroClient:
         return {"execution_no": data.get("execution_no", ""),
                 "result": self._result(body)}
 
-    def download_kym_export(self, execution_no: str) -> bytes:
+    def download_kym_export(self, execution_no: str, *,
+                            poll_seconds: float = 3.0,
+                            max_wait: float = 120.0) -> bytes:
         """Download the .kym file produced by a completed export job.
 
-        The API serves this as a file attachment; we return raw bytes so the
-        caller can save it or stream it to the browser.
+        The export runs asynchronously on ITA.  This method polls the
+        download endpoint until the file is ready (HTTP 200) or *max_wait*
+        seconds have elapsed.  A 404 simply means the export has not
+        finished yet; any other 4xx/5xx is raised immediately.
         """
+        import time
         url = f"{self._api}/menu/bulk/export/download/{execution_no}"
-        resp = self.session.request(
-            "GET", url, headers=self._headers(),
-            timeout=self._v("TIMEOUT"))
-        if resp.status_code >= 400:
+        deadline = time.monotonic() + max_wait
+        while True:
+            resp = self.session.request(
+                "GET", url, headers=self._headers(),
+                timeout=self._v("TIMEOUT"))
+            if resp.status_code == 200:
+                return resp.content
+            if resp.status_code == 404 and time.monotonic() < deadline:
+                time.sleep(poll_seconds)
+                continue
             raise ExastroError(
                 f"Export download failed: HTTP {resp.status_code}: "
                 f"{resp.text[:500]}")
-        return resp.content
 
     def upload_kym_import(self, filename: str, data: bytes) -> dict:
         """Upload a .kym file for import. Returns {upload_id, file_name, import_list}.
