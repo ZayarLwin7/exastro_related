@@ -33,8 +33,16 @@
   .menuitem .mgroup{color:var(--dim);font-size:11px}
   .selectall{font-size:11.5px;font-weight:600;color:var(--acc);cursor:pointer;text-decoration:none;margin-bottom:8px;display:inline-block}
   .selectall:hover{text-decoration:underline}
-  .fileinput{margin:12px 0}
-  .fileinput input[type=file]{font-size:13px;color:var(--txt)}
+  .filedrop{position:relative;margin:12px 0;padding:28px 20px;border:2px dashed var(--line);border-radius:14px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+  .filedrop:hover,.filedrop.dragover{border-color:var(--acc);background:rgba(var(--field-rgb),.12)}
+  .filedrop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+  .filedrop .dropicon{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:rgba(var(--field-rgb),.18);margin-bottom:8px}
+  .filedrop .dropicon svg{width:20px;height:20px;stroke:var(--acc);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .filedrop .droplabel{font-size:13px;font-weight:600;color:var(--txt)}
+  .filedrop .dropsub{font-size:11.5px;color:var(--mut);margin-top:4px}
+  .filedrop .filename{font-size:12px;color:var(--acc);font-weight:600;margin-top:6px;display:none}
+  .filedrop.has-file .filename{display:block}
+  .filedrop.has-file .dropsub{display:none}
   .actions{margin-top:16px;display:flex;gap:10px;align-items:center}
   .banner{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;padding:12px 14px;border-radius:12px;margin-bottom:16px}
   .banner.err{background:rgba(var(--err-rgb),.1);border:1px solid rgba(var(--err-rgb),.3);color:var(--err-text)}
@@ -44,8 +52,9 @@
   .empty{color:var(--mut);font-size:12.5px;padding:10px 2px}
   .moveselect{margin-bottom:14px;display:flex;align-items:center;gap:10px}
   .moveselect label{font-size:12.5px;font-weight:650;color:var(--txt);white-space:nowrap}
-  .moveselect select{flex:1;max-width:420px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--txt);font-family:inherit;font-size:13px}
-  .moveselect select:focus{outline:none;border-color:var(--acc)}
+  .moveselect select{flex:1;max-width:420px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--txt);font-family:inherit;font-size:13px;color-scheme:dark light}
+  .moveselect select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(var(--hi-rgb),.15)}
+  .moveselect select option{background:var(--panel-2);color:var(--txt)}
   .resolving{color:var(--mut);font-size:12px;font-style:italic}
 </style>
 </head>
@@ -116,8 +125,12 @@
     <h2>{{ t('mig_import_card') }}</h2>
     <p class="lede" style="margin-bottom:12px">{{ t('mig_import_hint') }}</p>
     <form method="post" action="/settings/migration/import" enctype="multipart/form-data">
-      <div class="fileinput">
-        <input type="file" name="kym_file" accept=".kym" required>
+      <div class="filedrop" id="filedrop">
+        <input type="file" name="kym_file" accept=".kym" required id="kym_file_input">
+        <div class="dropicon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div class="droplabel">{{ t('mig_import_btn') }}</div>
+        <div class="dropsub">{{ t('mig_drop_hint') }}</div>
+        <div class="filename" id="file_name_display"></div>
       </div>
       <div class="actions">
         <button class="btn" type="submit">{{ t('mig_import_btn') }}</button>
@@ -192,6 +205,24 @@
         setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 600);
       }, LIFE + i * 400);
     });
+  })();
+  (function () {
+    var drop = document.getElementById('filedrop');
+    var input = document.getElementById('kym_file_input');
+    var nameEl = document.getElementById('file_name_display');
+    if (!drop || !input) return;
+    input.addEventListener('change', function () {
+      if (input.files && input.files.length) {
+        nameEl.textContent = input.files[0].name;
+        drop.classList.add('has-file');
+      } else {
+        nameEl.textContent = '';
+        drop.classList.remove('has-file');
+      }
+    });
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('dragover'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('dragover'); });
+    drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('dragover'); });
   })();
 </script>
 </body>

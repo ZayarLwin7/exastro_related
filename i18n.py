@@ -167,6 +167,7 @@ TEXT: dict[str, dict[str, str]] = {
         "en": "Upload a .kym file exported from another environment. Hosts and hostgroups must already exist in the target if they differ.",
         "ja": "別の環境からエクスポートした.kymファイルをアップロードします。ホストやホストグループが異なる場合は、事前にターゲットに作成してください。"},
     "mig_import_btn": {"en": "Upload and import", "ja": "アップロードしてインポート"},
+    "mig_drop_hint": {"en": "or drag and drop a .kym file here", "ja": "または.kymファイルをここにドラッグ＆ドロップ"},
     "mig_no_menus": {"en": "Select at least one menu to export.", "ja": "エクスポートするメニューを1つ以上選択してください。"},
     "mig_no_file": {"en": "Choose a .kym file to upload.", "ja": "アップロードする.kymファイルを選択してください。"},
     "mig_bad_ext": {"en": "The file must have a .kym extension.", "ja": "ファイルの拡張子は.kymである必要があります。"},
