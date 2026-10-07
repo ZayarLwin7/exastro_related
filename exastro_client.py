@@ -2032,6 +2032,107 @@ class ExastroClient:
                     return found
         return None
 
+    # ---------------- export / import (migration) ----------------
+
+    def get_export_menu_list(self) -> list[dict]:
+        """Menus available for .kym export, grouped by menu_group.
+
+        Returns a flat list of dicts with keys: id, menu_name, menu_name_rest,
+        menu_group_name.  The caller decides which to tick.
+        """
+        url = f"{self._api}/menu/export/info/"
+        body = self._request("GET", url)
+        data = body.get("data", {}) if isinstance(body, dict) else {}
+        out = []
+        for group in (data.get("menu_groups") or []):
+            gname = group.get("menu_group_name", "")
+            for menu in (group.get("menus") or []):
+                out.append({
+                    "id": str(menu.get("id", "")),
+                    "menu_name": menu.get("menu_name", ""),
+                    "menu_name_rest": menu.get("menu_name_rest", ""),
+                    "menu_group_name": gname,
+                })
+        return out
+
+    def execute_kym_export(self, menus: list[str]) -> dict:
+        """Start a .kym bulk export and return {execution_no, ...}.
+
+        `menus` is a list of menu_name_rest values.  Always uses mode=1
+        (environment migration), abolished_type=2 (exclude discarded),
+        journal_type=2 (no history) — the clean-state defaults the operator
+        asked for.
+        """
+        url = f"{self._api}/menu/bulk/export/execute/"
+        payload = {
+            "mode": "1",
+            "abolished_type": "2",
+            "journal_type": "2",
+            "menu": menus,
+        }
+        body = self._request("POST", url, json=payload)
+        data = body.get("data", {}) if isinstance(body, dict) else {}
+        return {"execution_no": data.get("execution_no", ""),
+                "result": self._result(body)}
+
+    def download_kym_export(self, execution_no: str) -> bytes:
+        """Download the .kym file produced by a completed export job.
+
+        The API serves this as a file attachment; we return raw bytes so the
+        caller can save it or stream it to the browser.
+        """
+        url = f"{self._api}/menu/bulk/export/download/{execution_no}"
+        resp = self.session.request(
+            "GET", url, headers=self._headers(),
+            timeout=self._v("TIMEOUT"))
+        if resp.status_code >= 400:
+            raise ExastroError(
+                f"Export download failed: HTTP {resp.status_code}: "
+                f"{resp.text[:500]}")
+        return resp.content
+
+    def upload_kym_import(self, filename: str, data: bytes) -> dict:
+        """Upload a .kym file for import. Returns {upload_id, file_name, import_list}.
+
+        Uses multipart/form-data as recommended since ITA v2.5.0.
+        """
+        url = f"{self._api}/menu/import/upload/"
+        files = {"file": (filename, data, "application/octet-stream")}
+        resp = self.session.request(
+            "POST", url, headers={"Authorization": f"Bearer {self.token()}"},
+            files=files, timeout=self._v("TIMEOUT"))
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {"raw": resp.text[:2000]}
+        if resp.status_code >= 400:
+            msg = body.get("message", body) if isinstance(body, dict) else body
+            raise ExastroError(
+                f"Import upload failed: HTTP {resp.status_code}: {msg}")
+        rdata = body.get("data", {}) if isinstance(body, dict) else {}
+        return {
+            "upload_id": rdata.get("upload_id", ""),
+            "file_name": rdata.get("file_name", filename),
+            "import_list": rdata.get("import_list", {}),
+            "result": self._result(body),
+        }
+
+    def execute_kym_import(self, upload_id: str, file_name: str,
+                           menus: list[str] | None = None) -> dict:
+        """Execute the import of a previously uploaded .kym file.
+
+        If `menus` is None, all menus found in the upload are imported.
+        Returns {execution_no, result}.
+        """
+        url = f"{self._api}/menu/import/execute/"
+        payload: dict = {"upload_id": upload_id, "file_name": file_name}
+        if menus is not None:
+            payload["menu"] = menus
+        body = self._request("POST", url, json=payload)
+        data = body.get("data", {}) if isinstance(body, dict) else {}
+        return {"execution_no": data.get("execution_no", ""),
+                "result": self._result(body)}
+
 
 # The shipped default, captured before any profile is applied. Reading it
 # live would return whatever was applied last, which is often the broken
@@ -2287,108 +2388,6 @@ class MockExastroClient(ExastroClient):
             results.append({"key": key, "variable": candidate,
                             "status": "linked", "detail": "OK (mock)"})
         return results
-
-
-    # ---------------- export / import (migration) ----------------
-
-    def get_export_menu_list(self) -> list[dict]:
-        """Menus available for .kym export, grouped by menu_group.
-
-        Returns a flat list of dicts with keys: id, menu_name, menu_name_rest,
-        menu_group_name.  The caller decides which to tick.
-        """
-        url = f"{self._api}/menu/export/info/"
-        body = self._request("GET", url)
-        data = body.get("data", {}) if isinstance(body, dict) else {}
-        out = []
-        for group in (data.get("menu_groups") or []):
-            gname = group.get("menu_group_name", "")
-            for menu in (group.get("menus") or []):
-                out.append({
-                    "id": str(menu.get("id", "")),
-                    "menu_name": menu.get("menu_name", ""),
-                    "menu_name_rest": menu.get("menu_name_rest", ""),
-                    "menu_group_name": gname,
-                })
-        return out
-
-    def execute_kym_export(self, menus: list[str]) -> dict:
-        """Start a .kym bulk export and return {execution_no, ...}.
-
-        `menus` is a list of menu_name_rest values.  Always uses mode=1
-        (environment migration), abolished_type=2 (exclude discarded),
-        journal_type=2 (no history) — the clean-state defaults the operator
-        asked for.
-        """
-        url = f"{self._api}/menu/bulk/export/execute/"
-        payload = {
-            "mode": "1",
-            "abolished_type": "2",
-            "journal_type": "2",
-            "menu": menus,
-        }
-        body = self._request("POST", url, json=payload)
-        data = body.get("data", {}) if isinstance(body, dict) else {}
-        return {"execution_no": data.get("execution_no", ""),
-                "result": self._result(body)}
-
-    def download_kym_export(self, execution_no: str) -> bytes:
-        """Download the .kym file produced by a completed export job.
-
-        The API serves this as a file attachment; we return raw bytes so the
-        caller can save it or stream it to the browser.
-        """
-        url = f"{self._api}/menu/bulk/export/download/{execution_no}"
-        resp = self.session.request(
-            "GET", url, headers=self._headers(),
-            timeout=self._v("TIMEOUT"))
-        if resp.status_code >= 400:
-            raise ExastroError(
-                f"Export download failed: HTTP {resp.status_code}: "
-                f"{resp.text[:500]}")
-        return resp.content
-
-    def upload_kym_import(self, filename: str, data: bytes) -> dict:
-        """Upload a .kym file for import. Returns {upload_id, file_name, import_list}.
-
-        Uses multipart/form-data as recommended since ITA v2.5.0.
-        """
-        url = f"{self._api}/menu/import/upload/"
-        files = {"file": (filename, data, "application/octet-stream")}
-        resp = self.session.request(
-            "POST", url, headers={"Authorization": f"Bearer {self.token()}"},
-            files=files, timeout=self._v("TIMEOUT"))
-        try:
-            body = resp.json()
-        except ValueError:
-            body = {"raw": resp.text[:2000]}
-        if resp.status_code >= 400:
-            msg = body.get("message", body) if isinstance(body, dict) else body
-            raise ExastroError(
-                f"Import upload failed: HTTP {resp.status_code}: {msg}")
-        rdata = body.get("data", {}) if isinstance(body, dict) else {}
-        return {
-            "upload_id": rdata.get("upload_id", ""),
-            "file_name": rdata.get("file_name", filename),
-            "import_list": rdata.get("import_list", {}),
-            "result": self._result(body),
-        }
-
-    def execute_kym_import(self, upload_id: str, file_name: str,
-                           menus: list[str] | None = None) -> dict:
-        """Execute the import of a previously uploaded .kym file.
-
-        If `menus` is None, all menus found in the upload are imported.
-        Returns {execution_no, result}.
-        """
-        url = f"{self._api}/menu/import/execute/"
-        payload: dict = {"upload_id": upload_id, "file_name": file_name}
-        if menus is not None:
-            payload["menu"] = menus
-        body = self._request("POST", url, json=payload)
-        data = body.get("data", {}) if isinstance(body, dict) else {}
-        return {"execution_no": data.get("execution_no", ""),
-                "result": self._result(body)}
 
 
 def make_client():
