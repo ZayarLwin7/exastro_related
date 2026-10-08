@@ -2115,7 +2115,10 @@ class ExastroClient:
                         if b64_data:
                             try:
                                 raw = base64.b64decode(b64_data)
-                                return gzip.decompress(raw)
+                                # .kym files ARE gzip-compressed tar archives.
+                                # Return the raw gzipped bytes so the import
+                                # API can decompress them on the other side.
+                                return raw
                             except Exception as exc:
                                 raise ExastroError(
                                     f"Failed to decode export file: {exc}")
