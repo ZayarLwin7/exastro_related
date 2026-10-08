@@ -2285,20 +2285,20 @@ class ExastroClient:
 
     @staticmethod
     def _extract_menu_ids_from_import_list(import_list: dict) -> list[str]:
-        """Extract all menu ID strings from an upload's import_list structure.
+        """Extract all menu_name_rest values from an upload's import_list.
 
-        ITA's /menu/import/execute/ requires a non-empty `menu` array.
-        Sending [] causes a MariaDB syntax error (WHERE MENU_ID IN ()).
-        We extract every menu id from the nested menu_groups.menus[].id
-        fields so the caller can pass the complete set.
+        ITA's /menu/import/execute/ requires a non-empty `menu` array of
+        menu_name_rest strings (e.g. "movement_list").  Sending numeric
+        IDs causes HTTP 500; sending [] causes a MariaDB SQL syntax error.
+        We extract menu_name_rest from menu_groups[].menus[].menu_name_rest.
         """
-        ids = []
+        names = []
         for group in (import_list or {}).get("menu_groups") or []:
             for menu in group.get("menus") or []:
-                mid = menu.get("id")
-                if mid is not None:
-                    ids.append(str(mid))
-        return ids
+                rest = menu.get("menu_name_rest")
+                if rest:
+                    names.append(str(rest))
+        return names
 
     def execute_kym_import(self, upload_id: str, file_name: str,
                            menus: list[str] | None = None,
