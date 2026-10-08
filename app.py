@@ -1876,7 +1876,9 @@ def migration_import():
         if upload.get("result") != "OK":
             flash(i18n.t("mig_import_failed", lang, error=upload.get("result", "")), "error")
             return redirect("/settings/migration")
-        exec_result = cl.execute_kym_import(upload["upload_id"], upload["file_name"])
+        exec_result = cl.execute_kym_import(
+            upload["upload_id"], upload["file_name"],
+            import_list=upload.get("import_list"))
         if exec_result.get("result") != "OK":
             flash(i18n.t("mig_import_failed", lang, error=exec_result.get("result", "")), "error")
             return redirect("/settings/migration")

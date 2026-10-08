@@ -2283,15 +2283,38 @@ class ExastroClient:
             "result": self._result(body),
         }
 
+    @staticmethod
+    def _extract_menu_ids_from_import_list(import_list: dict) -> list[str]:
+        """Extract all menu ID strings from an upload's import_list structure.
+
+        ITA's /menu/import/execute/ requires a non-empty `menu` array.
+        Sending [] causes a MariaDB syntax error (WHERE MENU_ID IN ()).
+        We extract every menu id from the nested menu_groups.menus[].id
+        fields so the caller can pass the complete set.
+        """
+        ids = []
+        for group in (import_list or {}).get("menu_groups") or []:
+            for menu in group.get("menus") or []:
+                mid = menu.get("id")
+                if mid is not None:
+                    ids.append(str(mid))
+        return ids
+
     def execute_kym_import(self, upload_id: str, file_name: str,
-                           menus: list[str] | None = None) -> dict:
+                           menus: list[str] | None = None,
+                           import_list: dict | None = None) -> dict:
         """Execute the import of a previously uploaded .kym file.
 
-        If `menus` is None or empty, all menus found in the upload are
-        imported (ITA requires the key present; an empty list means "all").
+        If `menus` is None, all menus found in `import_list` are imported.
+        ITA requires the `menu` key to be a non-empty list; sending []
+        triggers a MariaDB SQL syntax error.  When neither `menus` nor
+        `import_list` is provided, falls back to importing everything via
+        an empty list (may fail on some ITA versions).
         Returns {execution_no, result}.
         """
         url = f"{self._api}/menu/import/execute/"
+        if menus is None and import_list is not None:
+            menus = self._extract_menu_ids_from_import_list(import_list)
         payload: dict = {"upload_id": upload_id, "file_name": file_name,
                          "menu": menus if menus else []}
         body = self._request("POST", url, json=payload)
