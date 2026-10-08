@@ -101,8 +101,8 @@ TEXT: dict[str, dict[str, str]] = {
     "role_label": {"en": "Role", "ja": "権限"},
     "assigned_badge": {"en": "assigned", "ja": "割り当て"},
     "credentials_hidden": {
-        "en": "held by the owner — not shown",
-        "ja": "所有者が管理（非表示）"},
+        "en": "held by the admin — not shown",
+        "ja": "管理者が管理（非表示）"},
     "assigned_profiles": {
         "en": "Profiles this person may use",
         "ja": "このユーザーが使用できるプロファイル"},

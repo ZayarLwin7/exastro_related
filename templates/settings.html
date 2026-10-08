@@ -365,7 +365,9 @@
       </details>
 
       <div class="actions">
+        {% if can_manage_profiles %}
         <button class="btn pri" type="submit" formaction="/settings/save">{{ t('set_save') }}</button>
+        {% endif %}
         <button class="btn" type="submit" formaction="/settings/test">{{ t('set_test') }}</button>
         <label class="check">
           <input type="checkbox" name="activate" value="on" {% if not target %}checked{% endif %}>
