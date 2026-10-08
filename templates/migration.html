@@ -223,7 +223,15 @@
     });
     drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('dragover'); });
     drop.addEventListener('dragleave', function () { drop.classList.remove('dragover'); });
-    drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('dragover'); });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault();
+      drop.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        nameEl.textContent = e.dataTransfer.files[0].name;
+        drop.classList.add('has-file');
+      }
+    });
   })();
 </script>
 <script src="/static/custom-select.js?v=3"></script>
