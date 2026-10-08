@@ -74,6 +74,10 @@ def _secret_key() -> str:
 app = Flask(__name__)
 app.secret_key = _secret_key()
 
+# 30-minute idle session timeout. Each request resets the clock.
+from datetime import timedelta
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+
 DB_PATH = "creations.db"
 # The process-wide client remains as the boot default (and for old direct
 # callers). Request paths resolve a separate client from the logged-in user's
@@ -239,6 +243,16 @@ def require_login():
         return None
     username = current_user()
     if username and settings.get_user(username) is not None:
+        # 30-minute idle timeout: check last activity timestamp
+        import time as _time
+        now = _time.time()
+        last = session.get("_last_activity", now)
+        if now - last > 1800:
+            session.clear()
+            flash(i18n.t("session_expired", _lang()), "error")
+            return redirect("/login")
+        session["_last_activity"] = now
+        session.modified = True
         return None
     if username:
         session.pop("user", None)
@@ -881,6 +895,7 @@ def login():
         if settings.authenticate(candidate, request.form.get("password") or ""):
             session.clear()
             session["user"] = candidate.strip().lower()
+            session.permanent = True
             flash(i18n.t("welcome", _lang(), name=session["user"]), "success")
             return redirect("/")
         flash(i18n.t("wrong_credentials", _lang()), "error")
@@ -916,6 +931,7 @@ def register():
             adopted = cur.rowcount
         session.clear()
         session["user"] = username
+        session.permanent = True
         flash(i18n.t("welcome", _lang(), name=username), "success")
         if adopted:
             flash(i18n.t("history_adopted", _lang(), count=adopted), "success")

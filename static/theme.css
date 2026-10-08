@@ -202,3 +202,11 @@ html[data-theme=light] textarea{color-scheme:light}
 .cs-option:hover,.cs-option.highlighted{background:rgba(var(--acc-rgb),.15);color:var(--txt)}
 .cs-option.selected{background:rgba(var(--acc-rgb),.25);font-weight:600}
 .cs-option.selected:hover{background:rgba(var(--acc-rgb),.32)}
+
+
+/* Modern scrollbars — thin, rounded, themed */
+*{scrollbar-width:thin;scrollbar-color:rgba(var(--hi-rgb),.18) transparent}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(var(--hi-rgb),.18);border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:rgba(var(--hi-rgb),.32)}
