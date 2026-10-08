@@ -2287,13 +2287,13 @@ class ExastroClient:
                            menus: list[str] | None = None) -> dict:
         """Execute the import of a previously uploaded .kym file.
 
-        If `menus` is None, all menus found in the upload are imported.
+        If `menus` is None or empty, all menus found in the upload are
+        imported (ITA requires the key present; an empty list means "all").
         Returns {execution_no, result}.
         """
         url = f"{self._api}/menu/import/execute/"
-        payload: dict = {"upload_id": upload_id, "file_name": file_name}
-        if menus is not None:
-            payload["menu"] = menus
+        payload: dict = {"upload_id": upload_id, "file_name": file_name,
+                         "menu": menus if menus else []}
         body = self._request("POST", url, json=payload)
         data = body.get("data", {}) if isinstance(body, dict) else {}
         return {"execution_no": data.get("execution_no", ""),
