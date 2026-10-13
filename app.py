@@ -1735,8 +1735,13 @@ def settings_test():
     pid = _draft_id()
     values = _form_values()
     if pid:
-        stored = (settings.get_profile(pid, owner=current_user()) or {}).get(
-            "payload") or {}
+        # Try owned profile first; fall back to any accessible profile so
+        # that a normal user testing a granted (admin-owned) profile still
+        # gets the DB-stored secrets backfilled into the blank form fields.
+        stored_prof = settings.get_profile(pid, owner=current_user())
+        if stored_prof is None:
+            stored_prof = settings.get_profile(pid)
+        stored = (stored_prof or {}).get("payload") or {}
         for key in settings.SECRET_FIELDS:
             # A blank secret means "the stored one" — the browser never held it.
             if not values.get(key) and stored.get(key):
