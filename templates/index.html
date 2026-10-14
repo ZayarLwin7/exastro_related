@@ -846,7 +846,15 @@ const T = {{ {
       return;
     } catch(e) {}
 
-    // Not JSON — try parsing as pasted TSV / space-separated key-value lines
+    // Not JSON — check for mismatched braces before parsing
+    var openBraces = (raw.match(/\{/g) || []).length;
+    var closeBraces = (raw.match(/\}/g) || []).length;
+    if (openBraces !== closeBraces) {
+      alert('Mismatched braces: found ' + openBraces + ' opening "{" but ' + closeBraces + ' closing "}". Cannot format.');
+      return;
+    }
+
+    // Try parsing as pasted TSV / space-separated key-value lines
     var lines = raw.split(/\r?\n/);
     var obj = {};
     var found = false;
@@ -878,6 +886,12 @@ const T = {{ {
         key = line;
         val = '';
       }
+
+      // Strip trailing colon from key (e.g. "Date:" from Excel becomes "Date")
+      while (key.length > 0 && key.charAt(key.length - 1) === ':') {
+        key = key.slice(0, -1).trim();
+      }
+
       // Treat literal "" or '' as empty string
       if (val === '""' || val === "''") {
         val = '';
