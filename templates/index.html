@@ -918,14 +918,9 @@ const T = {{ {
     }
 
     if (found) {
-      var jsonStr = JSON.stringify(obj, null, 2);
-      // Re-wrap in braces if the original input had outer { }
-      if (hasOuterBraces) {
-        var indented = jsonStr.split('\n').map(function(l){ return '  ' + l; }).join('\n');
-        params.value = '{\n' + indented + '\n}';
-      } else {
-        params.value = jsonStr;
-      }
+      // JSON.stringify already wraps in { }, which is exactly what we want
+      // whether or not the original input had outer braces.
+      params.value = JSON.stringify(obj, null, 2);
     }
     render();
   });
