@@ -861,6 +861,12 @@ const T = {{ {
         key = line.substring(0, idx).trim();
         val = line.substring(idx + 1).trim();
       }
+      // Then try colon separator (handles "key:value" and "key: value")
+      else if (line.indexOf(':') !== -1) {
+        var cidx = line.indexOf(':');
+        key = line.substring(0, cidx).trim();
+        val = line.substring(cidx + 1).trim();
+      }
       // Then try 1+ spaces (single space works too)
       else if (/\s+/.test(line)) {
         var parts = line.split(/\s+/);
@@ -871,11 +877,6 @@ const T = {{ {
       else {
         key = line;
         val = '';
-      }
-
-      // Strip trailing colon from key (e.g. "ans_model:" -> "ans_model")
-      if (key.charAt(key.length - 1) === ':') {
-        key = key.slice(0, -1).trim();
       }
       // Treat literal "" or '' as empty string
       if (val === '""' || val === "''") {
