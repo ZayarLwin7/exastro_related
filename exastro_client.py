@@ -1949,7 +1949,7 @@ class ExastroClient:
         reformatted (`/` written, `-` read).
         """
         when = when or time.localtime()
-        base = f"{movement_name}{time.strftime('%Y%m%d%H%M%S', when)}"
+        base = f"{movement_name}_{time.strftime('%Y%m%d%H%M%S', when)}"
         scheduled = time.strftime("%Y/%m/%d %H:%M:%S", when)
         name, attempt = base, 0
         while True:
@@ -2496,7 +2496,7 @@ class MockExastroClient(ExastroClient):
     def create_operation(self, movement_name: str, remarks: str = "",
                          when=None) -> dict:  # noqa: D102
         when = when or time.localtime()
-        name = f"{movement_name}{time.strftime('%Y%m%d%H%M%S', when)}"
+        name = f"{movement_name}_{time.strftime('%Y%m%d%H%M%S', when)}"
         stored = time.strftime("%Y-%m-%d %H:%M:%S", when)
         return {"name": name, "operation_id": f"op-{name}", "scheduled": stored,
                 "select": self._select_label(stored, name)}
