@@ -861,11 +861,11 @@ const T = {{ {
         key = line.substring(0, idx).trim();
         val = line.substring(idx + 1).trim();
       }
-      // Then try 2+ consecutive spaces
-      else if (/\s{2,}/.test(line)) {
-        var parts = line.split(/\s{2,}/);
+      // Then try 1+ spaces (single space works too)
+      else if (/\s+/.test(line)) {
+        var parts = line.split(/\s+/);
         key = parts[0].trim();
-        val = parts.slice(1).join('  ').trim();
+        val = parts.slice(1).join(' ').trim();
       }
       // No separator found — whole line is the key, value is blank
       else {
