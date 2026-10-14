@@ -873,6 +873,15 @@ const T = {{ {
         val = '';
       }
 
+      // Strip trailing colon from key (e.g. "ans_model:" -> "ans_model")
+      if (key.charAt(key.length - 1) === ':') {
+        key = key.slice(0, -1).trim();
+      }
+      // Treat literal "" or '' as empty string
+      if (val === '""' || val === "''") {
+        val = '';
+      }
+
       if (key) {
         // All values are strings; no lists
         obj[key] = String(val);
