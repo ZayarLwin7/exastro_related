@@ -837,8 +837,52 @@ const T = {{ {
   form.addEventListener('submit', ()=>{ sync(); });
 
   document.getElementById('fmt').addEventListener('click',()=>{
-    try{ params.value=JSON.stringify(JSON.parse(params.value),null,2); }
-    catch(e){ /* leave as-is if invalid */ }
+    var raw = params.value;
+    // If already valid JSON, just re-format it
+    try {
+      var parsed = JSON.parse(raw);
+      params.value = JSON.stringify(parsed, null, 2);
+      render();
+      return;
+    } catch(e) {}
+
+    // Not JSON — try parsing as pasted TSV / space-separated key-value lines
+    var lines = raw.split(/\r?\n/);
+    var obj = {};
+    var found = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+
+      var key = '', val = '';
+      // Try tab first (Excel copies as TSV)
+      if (line.indexOf('\t') !== -1) {
+        var idx = line.indexOf('\t');
+        key = line.substring(0, idx).trim();
+        val = line.substring(idx + 1).trim();
+      }
+      // Then try 2+ consecutive spaces
+      else if (/\s{2,}/.test(line)) {
+        var parts = line.split(/\s{2,}/);
+        key = parts[0].trim();
+        val = parts.slice(1).join('  ').trim();
+      }
+      // No separator found — whole line is the key, value is blank
+      else {
+        key = line;
+        val = '';
+      }
+
+      if (key) {
+        // All values are strings; no lists
+        obj[key] = String(val);
+        found = true;
+      }
+    }
+
+    if (found) {
+      params.value = JSON.stringify(obj, null, 2);
+    }
     render();
   });
   params.addEventListener('input',render);
