@@ -854,8 +854,21 @@ const T = {{ {
       return;
     }
 
+    // If braces are present but JSON was invalid, strip outermost { } and
+    // parse only the inner content as key-value pairs, then re-wrap.
+    var inner = raw;
+    var hasOuterBraces = false;
+    if (openBraces > 0) {
+      var firstOpen = inner.indexOf('{');
+      var lastClose = inner.lastIndexOf('}');
+      if (firstOpen < lastClose) {
+        inner = inner.substring(firstOpen + 1, lastClose);
+        hasOuterBraces = true;
+      }
+    }
+
     // Try parsing as pasted TSV / space-separated key-value lines
-    var lines = raw.split(/\r?\n/);
+    var lines = inner.split(/\r?\n/);
     var obj = {};
     var found = false;
     for (var i = 0; i < lines.length; i++) {
@@ -905,7 +918,14 @@ const T = {{ {
     }
 
     if (found) {
-      params.value = JSON.stringify(obj, null, 2);
+      var jsonStr = JSON.stringify(obj, null, 2);
+      // Re-wrap in braces if the original input had outer { }
+      if (hasOuterBraces) {
+        var indented = jsonStr.split('\n').map(function(l){ return '  ' + l; }).join('\n');
+        params.value = '{\n' + indented + '\n}';
+      } else {
+        params.value = jsonStr;
+      }
     }
     render();
   });
